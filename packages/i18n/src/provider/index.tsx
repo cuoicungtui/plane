@@ -13,7 +13,9 @@ interface TranslationProviderProps {
 }
 
 export const TranslationProvider: React.FC<TranslationProviderProps> = ({ children }) => {
-  const [isReady, setIsReady] = useState(i18nInstance.isInitialized);
+  // Render the same tree during SSR and the browser's first pass. i18next
+  // refreshes translations once initialization finishes.
+  const [isReady, setIsReady] = useState(true);
 
   useEffect(() => {
     initPromise

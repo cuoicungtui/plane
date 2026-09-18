@@ -129,7 +129,15 @@ export const useParseEditorContent = (args: TArgs) => {
           const src = img.getAttribute("src");
           if (src) {
             try {
-              const base64Image = await getBase64Image(src);
+              const imageUrl = /^(?:https?:|data:|blob:)/.test(src)
+                ? src
+                : getEditorAssetSrc({
+                    assetId: src,
+                    projectId,
+                    workspaceSlug,
+                  });
+              if (!imageUrl) return;
+              const base64Image = await getBase64Image(imageUrl);
               img.src = base64Image;
             } catch (error) {
               // log the error if the image conversion fails

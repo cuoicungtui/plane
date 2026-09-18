@@ -14,8 +14,9 @@
   },
   "scripts": {
     "dev": "tsdown --watch --no-clean",
-    "build": "pnpm run generate:types && tsdown",
+    "build": "pnpm run generate:types && tsdown && pnpm run copy:locales",
     "generate:types": "tsx scripts/generate-types.ts",
+    "copy:locales": "tsx scripts/copy-locales.ts",
     "sync:check": "tsx scripts/sync-check.ts",
     "check:sync": "tsx scripts/sync-check.ts --ci",
     "check:lint": "oxlint --max-warnings=9 .",

@@ -42,9 +42,10 @@ export const getBase64Image = async (url: string): Promise<string> => {
     throw new Error("Invalid URL provided");
   }
 
-  // Try to create a URL object to validate the URL
+  // Accept absolute URLs and same-origin paths such as `/api/assets/...`.
+  // The latter are used when the frontend is served through the Plane proxy.
   try {
-    new URL(url);
+    new URL(url, typeof window !== "undefined" ? window.location.origin : undefined);
   } catch {
     throw new Error("Invalid URL format");
   }

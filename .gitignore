@@ -114,6 +114,13 @@ scripts/
 
 # i18n auto-generated types (regenerated on every build)
 packages/i18n/src/types/keys.generated.ts
+packages/i18n/src/core/locales.generated.ts
 
 # Local security notes (not for version control)
 /security/
+
+# Local pnpm package store used by the development containers
+.pnpm-store/
+
+# Local browser automation session data
+.playwright-cli/

@@ -4,17 +4,19 @@
 
 """Development settings"""
 
+import importlib.util
 import os
 
 from .common import *  # noqa
 
 DEBUG = True
 
-# Debug Toolbar settings
-INSTALLED_APPS += ("debug_toolbar",)  # noqa
-MIDDLEWARE += ("debug_toolbar.middleware.DebugToolbarMiddleware",)  # noqa
-
-DEBUG_TOOLBAR_PATCH_SETTINGS = False
+# Debug Toolbar settings. The release backend image intentionally omits this
+# development-only dependency, so enable it only when it is installed.
+if importlib.util.find_spec("debug_toolbar") is not None:
+    INSTALLED_APPS += ("debug_toolbar",)  # noqa
+    MIDDLEWARE += ("debug_toolbar.middleware.DebugToolbarMiddleware",)  # noqa
+    DEBUG_TOOLBAR_PATCH_SETTINGS = False
 
 # Only show emails in console don't send it to smtp
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
