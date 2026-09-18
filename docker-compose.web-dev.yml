@@ -1,0 +1,31 @@
+# Runs only the Plane web development server. It shares the existing Plane
+# network, API, PostgreSQL, Redis and MinIO; it does not define any data service.
+services:
+  web:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: >-
+      sh -lc 'corepack enable && pnpm install --frozen-lockfile &&
+      cd apps/web && pnpm dev --host 0.0.0.0 --port 3000'
+    volumes:
+      - .:/workspace
+      - frontend_node_modules:/workspace/node_modules
+      - web_node_modules:/workspace/apps/web/node_modules
+      - pnpm_store:/pnpm/store
+    environment:
+      PNPM_STORE_DIR: /pnpm/store
+      VITE_FS_STRICT: "false"
+    networks:
+      default:
+        aliases:
+          - web
+
+volumes:
+  frontend_node_modules:
+  web_node_modules:
+  pnpm_store:
+
+networks:
+  default:
+    external: true
+    name: plane-app_default
