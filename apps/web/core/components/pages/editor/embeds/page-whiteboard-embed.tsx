@@ -18,6 +18,19 @@ const whiteboardService = new PageWhiteboardService();
 type Props = { boardId: string; pageId?: string; currentPageId?: string; projectId?: string; workspaceSlug?: string; readOnly?: boolean };
 type Scene = { elements?: any[]; appState?: Record<string, unknown>; files?: Record<string, any> };
 
+// Excalidraw needs dataURL while its canvas is open, but the asset object is
+// already stored in MinIO. Persist only durable asset metadata to the board.
+const sceneForStorage = (scene: Scene): Scene => ({
+  ...scene,
+  files: Object.fromEntries(
+    Object.entries(scene.files ?? {}).map(([id, file]) => [id, {
+      id,
+      mimeType: file?.mimeType,
+      created: file?.created,
+    }]),
+  ),
+});
+
 const dataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result));
@@ -63,8 +76,9 @@ export function PageWhiteboardEmbed({ boardId, pageId, currentPageId, projectId,
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
+        const storedScene = sceneForStorage(scene);
         const next = await whiteboardService.update(workspaceSlug, projectId, pageId, board.id, {
-          scene, asset_ids: Object.keys(scene.files ?? {}), expected_revision: board.revision,
+          scene: storedScene, asset_ids: Object.keys(storedScene.files ?? {}), expected_revision: board.revision,
         });
         setBoard(next);
       } catch (response: any) {
