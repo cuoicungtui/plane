@@ -108,7 +108,11 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
       <ControlLink
         id={`issue-${issue.id}`}
         href={workItemLink}
-        onClick={() => handleIssuePeekOverview(issue)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleIssuePeekOverview(issue);
+        }}
         className="w-full cursor-pointer"
       >
         {issue && (

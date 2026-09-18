@@ -313,6 +313,9 @@ export class IssueFilterHelperStore implements IIssueFilterHelperStore {
       per_page: options.perPageCount.toString(),
     };
 
+    if ((options as IssuePaginationOptions & { includeRelations?: boolean }).includeRelations)
+      paginationParams.expand = "issue_relation,issue_related";
+
     // If group by is specifically sent through options, like that for calendar layout, use that to group
     if (options.groupedBy) {
       paginationParams.group_by = options.groupedBy;

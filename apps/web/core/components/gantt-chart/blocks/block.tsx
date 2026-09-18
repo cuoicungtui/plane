@@ -69,6 +69,7 @@ export const GanttChartBlock = observer(function GanttChartBlock(props: Props) {
         "transition-all": !!isMoving && currentView === "week",
         "pointer-events-none": !isBlockVisibleOnChart,
       })}
+      data-gantt-block
       id={`gantt-block-${block.id}`}
       ref={resizableRef}
       style={{

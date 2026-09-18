@@ -57,6 +57,8 @@ type Props = {
   ) => ChartDataType | undefined;
   quickAdd?: React.ReactNode | undefined;
   isEpic?: boolean;
+  chartOverlay?: (width: number) => React.ReactNode;
+  onGanttBackgroundPointerDown?: () => void;
 };
 
 export const GanttChartMainContent = observer(function GanttChartMainContent(props: Props) {
@@ -82,6 +84,8 @@ export const GanttChartMainContent = observer(function GanttChartMainContent(pro
     quickAdd,
     updateBlockDates,
     isEpic = false,
+    chartOverlay,
+    onGanttBackgroundPointerDown,
   } = props;
   // refs
   const ganttContainerRef = useRef<HTMLDivElement>(null);
@@ -178,6 +182,15 @@ export const GanttChartMainContent = observer(function GanttChartMainContent(pro
               )}
               ref={ganttContainerRef}
               onScroll={onScroll}
+              onMouseDown={(event) => {
+                const target = event.target as Element;
+                if (
+                  !target.closest(
+                    "[data-gantt-dependency], [data-gantt-block], [data-gantt-sidebar-block]",
+                  )
+                )
+                  onGanttBackgroundPointerDown?.();
+              }}
             >
               <GanttChartSidebar
                 blockIds={blockIds}
@@ -224,6 +237,7 @@ export const GanttChartMainContent = observer(function GanttChartMainContent(pro
                       showAllBlocks={showAllBlocks}
                       updateBlockDates={updateBlockDates}
                     />
+                    {chartOverlay?.(itemsContainerWidth)}
                   </div>
                 )}
               </div>

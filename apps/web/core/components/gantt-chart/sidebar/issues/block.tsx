@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { observer } from "mobx-react";
 // plane imports
 import type { IGanttBlock } from "@plane/types";
@@ -25,10 +26,26 @@ type Props = {
   isDragging: boolean;
   selectionHelpers?: TSelectionHelper;
   isEpic?: boolean;
+  hierarchyDepth?: number;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
+  isDependencyHighlighted?: boolean;
+  onToggleChildren?: (issueId: string) => void;
 };
 
 export const IssuesSidebarBlock = observer(function IssuesSidebarBlock(props: Props) {
-  const { block, enableSelection, isDragging, selectionHelpers, isEpic = false } = props;
+  const {
+    block,
+    enableSelection,
+    isDragging,
+    selectionHelpers,
+    isEpic = false,
+    hierarchyDepth = 0,
+    hasChildren = false,
+    isCollapsed = false,
+    isDependencyHighlighted = false,
+    onToggleChildren,
+  } = props;
   // store hooks
   const { updateActiveBlockId, isBlockActive, getNumberOfDaysFromPosition } = useTimeLineChartStore();
   const { getIsIssuePeeked } = useIssueDetail();
@@ -49,6 +66,7 @@ export const IssuesSidebarBlock = observer(function IssuesSidebarBlock(props: Pr
         "rounded-l-sm border border-r-0 border-accent-strong": getIsIssuePeeked(block.data.id),
         "border border-r-0 border-strong-1": isIssueFocused,
       })}
+      data-gantt-sidebar-block
       onMouseEnter={() => updateActiveBlockId(block.id)}
       onMouseLeave={() => updateActiveBlockId(null)}
     >
@@ -57,6 +75,7 @@ export const IssuesSidebarBlock = observer(function IssuesSidebarBlock(props: Pr
           "group flex w-full items-center gap-2 bg-layer-transparent pr-4 hover:bg-layer-transparent-hover",
           {
             "bg-layer-transparent-hover": isBlockHoveredOn,
+            "bg-danger-subtle/60 hover:bg-danger-subtle": isDependencyHighlighted,
             "bg-accent-primary/5 hover:bg-accent-primary/10": isIssueSelected,
             "bg-accent-primary/10": isIssueSelected && isBlockHoveredOn,
           }
@@ -80,9 +99,30 @@ export const IssuesSidebarBlock = observer(function IssuesSidebarBlock(props: Pr
             />
           </div>
         )}
-        <div className="flex h-full flex-grow items-center justify-between gap-2 truncate">
+        <div className="flex h-full flex-grow items-center justify-between gap-2 truncate" style={{ paddingLeft: `${hierarchyDepth * 16}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? "Mở task con" : "Thu gọn task con"}
+              className="grid size-5 flex-shrink-0 place-items-center rounded text-secondary hover:bg-layer-2 hover:text-primary"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onToggleChildren?.(block.id);
+              }}
+            >
+              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            </button>
+          ) : (
+            <span className="size-5 flex-shrink-0" />
+          )}
           <div className="flex-grow truncate">
-            <IssueGanttSidebarBlock issueId={block.data.id} isEpic={isEpic} />
+            <IssueGanttSidebarBlock
+              issueId={block.data.id}
+              isDependencyHighlighted={isDependencyHighlighted}
+              isEpic={isEpic}
+            />
           </div>
           {duration && (
             <div className="flex-shrink-0 text-13 text-secondary">

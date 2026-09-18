@@ -10,7 +10,7 @@ import { useParams } from "next/navigation";
 import { Popover } from "@plane/propel/popover";
 import { Tooltip } from "@plane/propel/tooltip";
 import { ControlLink } from "@plane/ui";
-import { findTotalDaysInRange, generateWorkItemLink } from "@plane/utils";
+import { cn, findTotalDaysInRange, generateWorkItemLink } from "@plane/utils";
 // components
 import { SIDEBAR_WIDTH } from "@/components/gantt-chart/constants";
 import { IssueIdentifier } from "@/components/issues/issue-detail/issue-identifier";
@@ -30,10 +30,11 @@ import type { GanttStoreType } from "./base-gantt-root";
 type Props = {
   issueId: string;
   isEpic?: boolean;
+  isDependencyHighlighted?: boolean;
 };
 
 export const IssueGanttBlock = observer(function IssueGanttBlock(props: Props) {
-  const { issueId, isEpic } = props;
+  const { issueId, isEpic, isDependencyHighlighted = false } = props;
   // router
   const { workspaceSlug: routerWorkspaceSlug } = useParams();
   const workspaceSlug = routerWorkspaceSlug?.toString();
@@ -51,7 +52,8 @@ export const IssueGanttBlock = observer(function IssueGanttBlock(props: Props) {
   const stateDetails =
     issueDetails && getProjectStates(issueDetails?.project_id)?.find((state) => state?.id == issueDetails?.state_id);
 
-  const { blockStyle } = getBlockViewDetails(issueDetails, stateDetails?.color ?? "");
+  const stateColor = stateDetails?.color ?? "#60646C";
+  const { blockStyle } = getBlockViewDetails(issueDetails, stateColor);
 
   const handleIssuePeekOverview = () => handleRedirection(workspaceSlug, issueDetails, isMobile);
 
@@ -65,11 +67,13 @@ export const IssueGanttBlock = observer(function IssueGanttBlock(props: Props) {
           // oxlint-disable-next-line jsx_a11y/click-events-have-key-events oxlint-disable-next-line jsx_a11y/no-static-element-interactions
           <div
             id={`issue-${issueId}`}
-            className="space-between relative flex h-full w-full cursor-pointer items-center rounded-sm"
-            style={blockStyle}
+            className={cn("space-between relative flex h-full w-full cursor-pointer items-center overflow-hidden rounded-sm", {
+              "ring-2 ring-danger-primary ring-offset-1": isDependencyHighlighted,
+            })}
+            style={{ ...blockStyle, borderLeft: `4px solid ${stateColor}` }}
             onClick={handleIssuePeekOverview}
           >
-            <div className="absolute top-0 left-0 h-full w-full bg-surface-1/50" />
+            <div className="absolute top-0 left-0 h-full w-full bg-surface-1/15" />
             <div
               className="sticky w-auto flex-1 truncate overflow-hidden px-2.5 py-1 text-13 text-primary"
               style={{ left: `${SIDEBAR_WIDTH}px` }}
@@ -98,7 +102,7 @@ export const IssueGanttBlock = observer(function IssueGanttBlock(props: Props) {
 
 // rendering issues on gantt sidebar
 export const IssueGanttSidebarBlock = observer(function IssueGanttSidebarBlock(props: Props) {
-  const { issueId, isEpic = false } = props;
+  const { issueId, isEpic = false, isDependencyHighlighted = false } = props;
   // router
   const { workspaceSlug: routerWorkspaceSlug } = useParams();
   const workspaceSlug = routerWorkspaceSlug?.toString();
@@ -138,7 +142,9 @@ export const IssueGanttSidebarBlock = observer(function IssueGanttSidebarBlock(p
       id={`issue-${issueId}`}
       href={workItemLink}
       onClick={handleIssuePeekOverview}
-      className="line-clamp-1 w-full cursor-pointer text-13 text-primary"
+      className={cn("line-clamp-1 w-full cursor-pointer text-13 text-primary", {
+        "font-semibold text-danger-primary": isDependencyHighlighted,
+      })}
       disabled={!!issueDetails?.tempId}
     >
       <div className="relative flex h-full w-full cursor-pointer items-center gap-2">

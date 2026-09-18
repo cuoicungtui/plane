@@ -26,11 +26,21 @@ type Props = {
   issueServiceType: TIssueServiceType;
 };
 
-export const RelationActionButton = observer(function RelationActionButton(props: Props) {
+const RELATION_DESCRIPTIONS: Record<TIssueRelationTypes, string> = {
+  relates_to: "Hai task có liên quan, nhưng không phụ thuộc tiến độ của nhau.",
+  duplicate: "Hai task cùng một nội dung. Dùng để tránh xử lý trùng lặp.",
+  blocked_by: "Task hiện tại phải chờ task được chọn hoàn thành.",
+  blocking: "Task được chọn phải chờ task hiện tại hoàn thành.",
+};
+
+export const RelationActionButton = observer(function RelationActionButton(
+  props: Props,
+) {
   const { customButton, issueId, disabled = false, issueServiceType } = props;
   const { t } = useTranslation();
   // store hooks
-  const { toggleRelationModal, setRelationKey } = useIssueDetail(issueServiceType);
+  const { toggleRelationModal, setRelationKey } =
+    useIssueDetail(issueServiceType);
 
   const ISSUE_RELATION_OPTIONS = useTimeLineRelationOptions();
 
@@ -41,7 +51,11 @@ export const RelationActionButton = observer(function RelationActionButton(props
   };
 
   // button element
-  const customButtonElement = customButton ? <>{customButton}</> : <PlusIcon className="h-4 w-4" />;
+  const customButtonElement = customButton ? (
+    <>{customButton}</>
+  ) : (
+    <PlusIcon className="h-4 w-4" />
+  );
 
   return (
     <CustomMenu
@@ -62,9 +76,14 @@ export const RelationActionButton = observer(function RelationActionButton(props
               handleOnClick(item.key);
             }}
           >
-            <div className="flex items-center gap-2">
-              {item.icon(12)}
-              <span>{t(item.i18n_label)}</span>
+            <div className="flex w-72 items-start gap-2">
+              <span className="mt-0.5">{item.icon(12)}</span>
+              <div>
+                <p>{t(item.i18n_label)}</p>
+                <p className="mt-0.5 text-11 text-tertiary">
+                  {RELATION_DESCRIPTIONS[item.key]}
+                </p>
+              </div>
             </div>
           </CustomMenu.MenuItem>
         );

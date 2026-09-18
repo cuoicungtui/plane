@@ -35,6 +35,14 @@ type Props = {
   showAllBlocks?: boolean;
   selectionHelpers?: TSelectionHelper;
   isEpic?: boolean;
+  hierarchyRows?: {
+    id: string;
+    depth: number;
+    hasChildren: boolean;
+  }[];
+  collapsedIssueIds?: Set<string>;
+  highlightedIssueIds?: Set<string>;
+  onToggleIssueChildren?: (issueId: string) => void;
 };
 
 export const IssueGanttSidebar = observer(function IssueGanttSidebar(props: Props) {
@@ -49,6 +57,10 @@ export const IssueGanttSidebar = observer(function IssueGanttSidebar(props: Prop
     showAllBlocks = false,
     selectionHelpers,
     isEpic = false,
+    hierarchyRows,
+    collapsedIssueIds,
+    highlightedIssueIds,
+    onToggleIssueChildren,
   } = props;
 
   const { getBlockById } = useTimeLineChart(GANTT_TIMELINE_TYPE.ISSUE);
@@ -83,6 +95,7 @@ export const IssueGanttSidebar = observer(function IssueGanttSidebar(props: Prop
           {blockIds.map((blockId, index) => {
             const block = getBlockById(blockId);
             const isBlockVisibleOnSidebar = block?.start_date && block?.target_date;
+            const hierarchyRow = hierarchyRows?.[index];
 
             // hide the block if it doesn't have start and target dates and showAllBlocks is false
             if (!block || (!showAllBlocks && !isBlockVisibleOnSidebar)) return;
@@ -108,6 +121,11 @@ export const IssueGanttSidebar = observer(function IssueGanttSidebar(props: Prop
                       enableSelection={enableSelection}
                       isDragging={isDragging}
                       selectionHelpers={selectionHelpers}
+                      hierarchyDepth={hierarchyRow?.depth ?? 0}
+                      hasChildren={hierarchyRow?.hasChildren ?? false}
+                      isCollapsed={collapsedIssueIds?.has(block.id) ?? false}
+                      isDependencyHighlighted={highlightedIssueIds?.has(block.id) ?? false}
+                      onToggleChildren={onToggleIssueChildren}
                       isEpic={isEpic}
                     />
                   )}
