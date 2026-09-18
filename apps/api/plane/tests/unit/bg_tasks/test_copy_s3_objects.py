@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from plane.bgtasks.copy_s3_object import (
     copy_s3_objects_of_description_and_assets,
     copy_assets,
+    stage_assets,
 )
 import base64
 
@@ -173,3 +174,32 @@ class TestCopyS3Objects:
         # Assert
         assert result == []
         mock_storage_instance.copy_object.assert_not_called()
+
+    @pytest.mark.django_db
+    @patch("plane.bgtasks.copy_s3_object.S3Storage")
+    def test_stage_assets_cleans_staged_objects_when_a_later_copy_times_out(
+        self, mock_s3_storage, workspace, project, issue, file_asset
+    ):
+        """A failed batch must leave neither new rows nor staged S3 objects."""
+        additional_assets = [
+            FileAsset.objects.create(
+                issue=issue,
+                workspace=workspace,
+                project=project,
+                asset=f"workspace1/test-asset-{index}.jpg",
+                attributes={"name": f"test-asset-{index}.jpg", "size": 100, "type": "image/jpeg"},
+                entity_type="ISSUE_DESCRIPTION",
+            )
+            for index in (2, 3)
+        ]
+        storage = MagicMock()
+        storage.copy_object.side_effect = [object(), object(), TimeoutError("S3 request timed out")]
+        storage.get_object_metadata.return_value = {"ContentLength": 100}
+        mock_s3_storage.return_value = storage
+
+        with pytest.raises(TimeoutError, match="S3 request timed out"):
+            stage_assets(workspace, project.id, [file_asset.id, *(asset.id for asset in additional_assets)])
+
+        assert FileAsset.objects.filter(project=project).count() == 3
+        deleted_keys = storage.delete_files.call_args.args[0]
+        assert len(deleted_keys) == 2

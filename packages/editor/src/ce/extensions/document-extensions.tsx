@@ -6,7 +6,8 @@
 
 import type { HocuspocusProvider } from "@hocuspocus/provider";
 import type { AnyExtension } from "@tiptap/core";
-import { SlashCommands } from "@/extensions";
+import { SlashCommands, WhiteboardEmbedExtension, WorkItemEmbedExtension } from "@/extensions";
+import type { TSlashCommandAdditionalOption } from "@/extensions";
 // types
 import type { IEditorProps, TExtensions, TUserDetails } from "@/types";
 
@@ -21,14 +22,32 @@ export type TDocumentEditorAdditionalExtensionsProps = Pick<
 
 export type TDocumentEditorAdditionalExtensionsRegistry = {
   isEnabled: (disabledExtensions: TExtensions[], flaggedExtensions: TExtensions[]) => boolean;
-  getExtension: (props: TDocumentEditorAdditionalExtensionsProps) => AnyExtension;
+  getExtension: (props: TDocumentEditorAdditionalExtensionsProps) => AnyExtension | undefined;
 };
 
 const extensionRegistry: TDocumentEditorAdditionalExtensionsRegistry[] = [
   {
     isEnabled: (disabledExtensions) => !disabledExtensions.includes("slash-commands"),
-    getExtension: ({ disabledExtensions, flaggedExtensions }) =>
-      SlashCommands({ disabledExtensions, flaggedExtensions }),
+    getExtension: ({ disabledExtensions, flaggedExtensions, extendedEditorProps }) =>
+      SlashCommands({
+        disabledExtensions,
+        flaggedExtensions,
+        additionalOptions: extendedEditorProps?.slashCommandOptions as TSlashCommandAdditionalOption[] | undefined,
+      }),
+  },
+  {
+    isEnabled: (disabledExtensions) => !disabledExtensions.includes("issue-embed"),
+    getExtension: ({ extendedEditorProps }) => {
+      const widgetCallback = extendedEditorProps?.embed?.issue?.widgetCallback;
+      return widgetCallback ? WorkItemEmbedExtension({ widgetCallback }) : undefined;
+    },
+  },
+  {
+    isEnabled: (disabledExtensions) => !disabledExtensions.includes("whiteboard"),
+    getExtension: ({ extendedEditorProps }) => {
+      const widgetCallback = extendedEditorProps?.embed?.whiteboard?.widgetCallback;
+      return widgetCallback ? WhiteboardEmbedExtension({ widgetCallback }) : undefined;
+    },
   },
 ];
 
@@ -37,7 +56,8 @@ export function DocumentEditorAdditionalExtensions(props: TDocumentEditorAdditio
 
   const documentExtensions = extensionRegistry
     .filter((config) => config.isEnabled(disabledExtensions, flaggedExtensions))
-    .map((config) => config.getExtension(props));
+    .map((config) => config.getExtension(props))
+    .filter((extension): extension is AnyExtension => extension !== undefined);
 
   return documentExtensions;
 }

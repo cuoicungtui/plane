@@ -26,6 +26,7 @@ import { CustomStarterKitExtension } from "./starter-kit";
 import { TableHeader, TableCell, TableRow, Table } from "./table";
 import { CustomTextAlignExtension } from "./text-align";
 import { WorkItemEmbedExtensionConfig } from "./work-item-embed/extension-config";
+import { WhiteboardEmbedExtensionConfig } from "./whiteboard/extension-config";
 
 export const CoreEditorExtensionsWithoutProps = [
   CustomStarterKitExtension({
@@ -63,4 +64,4 @@ export const CoreEditorExtensionsWithoutProps = [
   ...CoreEditorAdditionalExtensionsWithoutProps,
 ];
 
-export const DocumentEditorExtensionsWithoutProps = [WorkItemEmbedExtensionConfig];
+export const DocumentEditorExtensionsWithoutProps = [WorkItemEmbedExtensionConfig, WhiteboardEmbedExtensionConfig];

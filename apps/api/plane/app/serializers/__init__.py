@@ -104,6 +104,7 @@ from .page import (
     PageBinaryUpdateSerializer,
     PageVersionDetailSerializer,
 )
+from .whiteboard import PageWhiteboardSerializer
 
 from .estimate import (
     EstimateSerializer,

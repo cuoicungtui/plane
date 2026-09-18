@@ -75,6 +75,8 @@ CUSTOM_TAGS = {
     "label",
     "input",
     "image-component",
+    "issue-embed-component",
+    "whiteboard-embed-component",
 }
 ALLOWED_TAGS = nh3.ALLOWED_TAGS | CUSTOM_TAGS
 
@@ -134,6 +136,8 @@ ATTRIBUTES = {
         "title",
     },
     "mention-component": {"id", "entity_identifier", "entity_name"},
+    "issue-embed-component": {"id", "entity_identifier", "project_identifier", "workspace_identifier", "entity_name"},
+    "whiteboard-embed-component": {"id", "board_identifier", "page_identifier", "workspace_identifier", "schema_version"},
     "th": {
         "colspan",
         "rowspan",

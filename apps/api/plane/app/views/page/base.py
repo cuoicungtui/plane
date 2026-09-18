@@ -4,11 +4,14 @@
 
 # Python imports
 import json
+import uuid
 from datetime import datetime
+from copy import deepcopy
+from bs4 import BeautifulSoup
 from django.core.serializers.json import DjangoJSONEncoder
 
 # Django imports
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import (
     Exists,
     OuterRef,
@@ -43,6 +46,7 @@ from plane.db.models import (
     ProjectMember,
     ProjectPage,
     Project,
+    PageWhiteboard,
     UserRecentVisit,
 )
 from plane.utils.error_codes import ERROR_CODES
@@ -52,7 +56,7 @@ from ..base import BaseAPIView, BaseViewSet
 from plane.bgtasks.page_transaction_task import page_transaction
 from plane.bgtasks.page_version_task import track_page_version
 from plane.bgtasks.recent_visited_task import recent_visited_task
-from plane.bgtasks.copy_s3_object import copy_s3_objects_of_description_and_assets
+from plane.bgtasks.copy_s3_object import stage_assets, persist_staged_assets, cleanup_copied_assets
 from plane.app.permissions import ProjectPagePermission
 
 
@@ -578,62 +582,82 @@ class PagesDescriptionViewSet(BaseViewSet):
 class PageDuplicateEndpoint(BaseAPIView):
     permission_classes = [ProjectPagePermission]
 
+    @staticmethod
+    def _remap_value(value, identifiers):
+        if isinstance(value, dict):
+            return {key: PageDuplicateEndpoint._remap_value(item, identifiers) for key, item in value.items()}
+        if isinstance(value, list):
+            return [PageDuplicateEndpoint._remap_value(item, identifiers) for item in value]
+        return identifiers.get(str(value), value)
+
     def post(self, request, slug, project_id, page_id):
-        page = Page.objects.get(
-            pk=page_id,
-            workspace__slug=slug,
-            projects__id=project_id,
-            project_pages__deleted_at__isnull=True,
-        )
-
-        # check for permission
-        if page.access == Page.PRIVATE_ACCESS and page.owned_by_id != request.user.id:
-            return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
-
-        # get all the project ids where page is present
-        project_ids = ProjectPage.objects.filter(page_id=page_id).values_list("project_id", flat=True)
-
-        page.pk = None
-        page.name = f"{page.name} (Copy)"
-        page.description_binary = None
-        page.owned_by = request.user
-        page.created_by = request.user
-        page.updated_by = request.user
-        page.save()
-
-        for project_id in project_ids:
-            ProjectPage.objects.create(
-                workspace_id=page.workspace_id,
-                project_id=project_id,
-                page_id=page.id,
-                created_by_id=page.created_by_id,
-                updated_by_id=page.updated_by_id,
+        # Snapshot only referenced boards. The row locks make this a consistent
+        # scene snapshot without holding a lock while objects are copied to S3.
+        with transaction.atomic():
+            source = Page.objects.select_for_update().get(
+                pk=page_id, workspace__slug=slug, projects__id=project_id, project_pages__deleted_at__isnull=True
             )
+            if source.access == Page.PRIVATE_ACCESS and source.owned_by_id != request.user.id:
+                return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+            source_html = source.description_html
+            source_json = deepcopy(source.description_json)
+            project_ids = list(ProjectPage.objects.filter(page_id=source.id).values_list("project_id", flat=True))
+            soup = BeautifulSoup(source_html, "html.parser")
+            referenced_ids = {node.get("board_identifier") for node in soup.find_all("whiteboard-embed-component") if node.get("board_identifier")}
+            source_boards = list(PageWhiteboard.objects.select_for_update().filter(page=source, id__in=referenced_ids))
 
-        page_transaction.delay(
-            new_description_html=page.description_html,
-            old_description_html=None,
-            page_id=page.id,
-        )
-
-        # Copy the s3 objects uploaded in the page
-        copy_s3_objects_of_description_and_assets.delay(
-            entity_name="PAGE",
-            entity_identifier=page.id,
-            project_id=project_id,
-            slug=slug,
-            user_id=request.user.id,
-        )
-
-        page = (
-            Page.objects.filter(pk=page.id)
-            .annotate(
-                project_ids=Coalesce(
-                    ArrayAgg("projects__id", distinct=True, filter=~Q(projects__id=True)),
-                    Value([], output_field=ArrayField(UUIDField())),
+        inline_asset_ids = [node.get("src") for node in soup.find_all("image-component") if node.get("src")]
+        board_asset_ids = [asset_id for board in source_boards for asset_id in board.asset_ids]
+        asset_ids = list(dict.fromkeys(inline_asset_ids + board_asset_ids))
+        # Stage and verify every object before creating a Page or FileAsset row.
+        staged_assets = stage_assets(source.workspace, project_id, asset_ids)
+        try:
+            with transaction.atomic():
+                page = Page.objects.create(
+                    id=uuid.uuid4(), workspace=source.workspace, name=f"{source.name} (Copy)", description_html=source_html,
+                    description_json=source_json, description_binary=None, owned_by=request.user,
+                    access=source.access, color=source.color, view_props=deepcopy(source.view_props),
+                    logo_props=deepcopy(source.logo_props), created_by=request.user, updated_by=request.user,
                 )
-            )
-            .first()
-        )
-        serializer = PageDetailSerializer(page)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+                for destination_project_id in project_ids:
+                    ProjectPage.objects.create(
+                        workspace_id=page.workspace_id, project_id=destination_project_id, page=page,
+                        created_by=request.user, updated_by=request.user,
+                    )
+
+                duplicated_assets = persist_staged_assets(page, page.id, project_id, request.user.id, staged_assets)
+                asset_map = {item["old_asset_id"]: item["new_asset_id"] for item in duplicated_assets}
+                if len(asset_map) != len(asset_ids):
+                    raise ValueError("Could not stage every Page asset for duplication.")
+
+                board_map = {}
+                for source_board in source_boards:
+                    copied = PageWhiteboard.objects.create(
+                        workspace=page.workspace, page=page, engine=source_board.engine,
+                        schema_version=source_board.schema_version,
+                        scene=self._remap_value(deepcopy(source_board.scene), asset_map),
+                        asset_ids=[asset_map.get(str(asset_id), str(asset_id)) for asset_id in source_board.asset_ids],
+                        revision=1, created_by=request.user, updated_by=request.user,
+                    )
+                    board_map[str(source_board.id)] = str(copied.id)
+
+                for image in soup.find_all("image-component"):
+                    if image.get("src") in asset_map:
+                        image["src"] = asset_map[image["src"]]
+                for node in soup.find_all("whiteboard-embed-component"):
+                    board_id = node.get("board_identifier")
+                    if board_id in board_map:
+                        node["board_identifier"] = board_map[board_id]
+                        node["page_identifier"] = str(page.id)
+                page.description_html = str(soup)
+                page.description_json = self._remap_value(source_json, {**asset_map, **board_map, str(source.id): str(page.id)})
+                page.save()
+        except Exception:
+            cleanup_copied_assets(source, staged_assets)
+            raise
+
+        page_transaction.delay(new_description_html=page.description_html, old_description_html=None, page_id=page.id)
+        page = Page.objects.filter(pk=page.id).annotate(
+            project_ids=Coalesce(ArrayAgg("projects__id", distinct=True, filter=~Q(projects__id=True)), Value([], output_field=ArrayField(UUIDField())))
+        ).first()
+        return Response(PageDetailSerializer(page).data, status=status.HTTP_201_CREATED)

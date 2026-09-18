@@ -85,40 +85,71 @@ def sync_with_external_service(entity_name, description_html):
     return {}
 
 
-def copy_assets(entity, entity_identifier, project_id, asset_ids, user_id):
-    duplicated_assets = []
-    workspace = entity.workspace
+def stage_assets(workspace, project_id, asset_ids):
+    """Copy asset objects to fresh keys without creating database rows.
+
+    S3/MinIO has no transaction. Keeping this phase DB-free lets callers
+    discard every copied object if a later database transaction fails.
+    """
+    staged_assets = []
     storage = S3Storage()
-    original_assets = FileAsset.objects.filter(workspace=workspace, project_id=project_id, id__in=asset_ids)
+    originals = FileAsset.objects.filter(workspace=workspace, project_id=project_id, id__in=asset_ids)
+    originals_by_id = {str(asset.id): asset for asset in originals}
+    if len(originals_by_id) != len(set(str(asset_id) for asset_id in asset_ids)):
+        raise ValueError("One or more assets cannot be duplicated in this project.")
 
-    for original_asset in original_assets:
-        destination_key = f"{workspace.id}/{uuid.uuid4().hex}-{original_asset.attributes.get('name')}"
+    try:
+        for asset_id in asset_ids:
+            original = originals_by_id[str(asset_id)]
+            destination_key = f"{workspace.id}/{uuid.uuid4().hex}-{original.attributes.get('name')}"
+            if storage.copy_object(original.asset, destination_key) is None:
+                raise RuntimeError("Could not copy an asset object.")
+            if storage.get_object_metadata(destination_key) is None:
+                raise RuntimeError("Copied asset object could not be verified.")
+            staged_assets.append({"old_asset": original, "old_asset_id": str(original.id), "new_asset_key": destination_key})
+    except Exception:
+        cleanup_staged_assets(staged_assets)
+        raise
+    return staged_assets
+
+
+def persist_staged_assets(entity, entity_identifier, project_id, user_id, staged_assets):
+    """Create FileAsset rows after every staged object is verified."""
+    duplicated_assets = []
+    for staged in staged_assets:
+        original = staged["old_asset"]
         duplicated_asset = FileAsset.objects.create(
-            attributes={
-                "name": original_asset.attributes.get("name"),
-                "type": original_asset.attributes.get("type"),
-                "size": original_asset.attributes.get("size"),
-            },
-            asset=destination_key,
-            size=original_asset.size,
-            workspace=workspace,
-            created_by_id=user_id,
-            entity_type=original_asset.entity_type,
-            project_id=project_id,
-            storage_metadata=original_asset.storage_metadata,
-            **get_entity_id_field(original_asset.entity_type, entity_identifier),
+            attributes={"name": original.attributes.get("name"), "type": original.attributes.get("type"), "size": original.attributes.get("size")},
+            asset=staged["new_asset_key"], size=original.size, workspace=entity.workspace,
+            created_by_id=user_id, entity_type=original.entity_type, project_id=project_id,
+            storage_metadata=original.storage_metadata, is_uploaded=True,
+            **get_entity_id_field(original.entity_type, entity_identifier),
         )
-        storage.copy_object(original_asset.asset, destination_key)
-        duplicated_assets.append(
-            {
-                "new_asset_id": str(duplicated_asset.id),
-                "old_asset_id": str(original_asset.id),
-            }
-        )
-    if duplicated_assets:
-        FileAsset.objects.filter(pk__in=[item["new_asset_id"] for item in duplicated_assets]).update(is_uploaded=True)
-
+        duplicated_assets.append({"new_asset_id": str(duplicated_asset.id), "old_asset_id": staged["old_asset_id"], "new_asset_key": staged["new_asset_key"]})
     return duplicated_assets
+
+
+def copy_assets(entity, entity_identifier, project_id, asset_ids, user_id):
+    # Compatibility wrapper for existing asynchronous Page/Issue copy jobs.
+    try:
+        staged_assets = stage_assets(entity.workspace, project_id, asset_ids)
+    except ValueError:
+        # Existing copy jobs treat missing source assets as a no-op. The Page
+        # duplicate endpoint calls stage_assets directly and deliberately
+        # surfaces this as an atomic duplication failure.
+        return []
+    return persist_staged_assets(entity, entity_identifier, project_id, user_id, staged_assets)
+
+
+def cleanup_staged_assets(staged_assets):
+    keys = [item["new_asset_key"] for item in staged_assets if item.get("new_asset_key")]
+    if keys:
+        S3Storage().delete_files(keys)
+
+
+def cleanup_copied_assets(_entity, duplicated_assets):
+    """Remove staged S3 objects; caller transaction removes database rows."""
+    cleanup_staged_assets(duplicated_assets)
 
 
 @shared_task

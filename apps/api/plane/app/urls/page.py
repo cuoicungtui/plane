@@ -11,6 +11,7 @@ from plane.app.views import (
     PagesDescriptionViewSet,
     PageVersionEndpoint,
     PageDuplicateEndpoint,
+    PageWhiteboardEndpoint,
 )
 
 urlpatterns = [
@@ -72,5 +73,15 @@ urlpatterns = [
         "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/duplicate/",
         PageDuplicateEndpoint.as_view(),
         name="page-duplicate",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/whiteboards/",
+        PageWhiteboardEndpoint.as_view(),
+        name="page-whiteboards",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/whiteboards/<uuid:board_id>/",
+        PageWhiteboardEndpoint.as_view(),
+        name="page-whiteboard",
     ),
 ]

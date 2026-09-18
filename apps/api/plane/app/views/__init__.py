@@ -10,6 +10,7 @@ from .project.base import (
     DeployBoardViewSet,
     ProjectArchiveUnarchiveEndpoint,
 )
+from .page.whiteboard import PageWhiteboardEndpoint
 
 from .project.invite import (
     UserProjectInvitationsViewset,

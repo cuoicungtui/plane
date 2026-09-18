@@ -159,9 +159,20 @@ export const useParseEditorContent = (args: TArgs) => {
         // replace the input element with the div element
         component.replaceWith(div);
       });
-      // remove all issue-embed-component elements
+      // Export a readable fallback. These atom nodes have no HTML children,
+      // so silently removing them makes a PDF/HTML export misleading.
       const issueEmbedComponents = doc.querySelectorAll("issue-embed-component");
-      issueEmbedComponents.forEach((component) => component.remove());
+      issueEmbedComponents.forEach((component) => {
+        const fallback = doc.createElement("p");
+        fallback.textContent = "Work item";
+        component.replaceWith(fallback);
+      });
+      const whiteboardEmbedComponents = doc.querySelectorAll("whiteboard-embed-component");
+      whiteboardEmbedComponents.forEach((component) => {
+        const fallback = doc.createElement("p");
+        fallback.textContent = "Whiteboard (open the Page to view the canvas)";
+        component.replaceWith(fallback);
+      });
       // serialize the document back into a string
       let serializedDoc = doc.body.innerHTML;
       // remove null colors from table elements
@@ -217,9 +228,13 @@ export const useParseEditorContent = (args: TArgs) => {
           (_match, src) => `<img src="${src}" >`
         );
       }
-      // remove all issue-embed components
+      // Keep embeds visible in Markdown exports even though the interactive
+      // widgets themselves are Page-only.
       const issueEmbedRegex = /<issue-embed-component[^>]*>[^]*<\/issue-embed-component>/g;
-      parsedMarkdownContent = parsedMarkdownContent.replace(issueEmbedRegex, "");
+      const whiteboardEmbedRegex = /<whiteboard-embed-component[^>]*>[^]*<\/whiteboard-embed-component>/g;
+      parsedMarkdownContent = parsedMarkdownContent
+        .replace(issueEmbedRegex, "[Work item]")
+        .replace(whiteboardEmbedRegex, "[Whiteboard — open the Page to view the canvas]");
       return parsedMarkdownContent;
     },
     [getUserDetails, parseAdditionalEditorContent, workspaceSlug]

@@ -6,7 +6,17 @@
 
 export type IEditorExtensionOptions = unknown;
 
-export type IEditorPropsExtended = unknown;
+export type IEditorPropsExtended = {
+  embed?: {
+    issue?: {
+      widgetCallback: (props: { issueId: string; projectId: string | undefined; workspaceSlug: string | undefined }) => React.ReactNode;
+    };
+    whiteboard?: {
+      widgetCallback: (props: { boardId: string; pageId: string | undefined; workspaceSlug: string | undefined; schemaVersion: number | undefined }) => React.ReactNode;
+    };
+  };
+  slashCommandOptions?: Array<unknown>;
+};
 
 export type ICollaborativeDocumentEditorPropsExtended = unknown;
 
