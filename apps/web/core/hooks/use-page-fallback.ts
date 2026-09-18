@@ -36,6 +36,11 @@ export const usePageFallback = (args: TArgs) => {
     const editor = editorRef.current;
     if (!editor) return;
 
+    // An image node is inserted before its upload has produced a durable asset
+    // ID. Persisting at this point turns that temporary node into a permanent
+    // blank placeholder if the collaboration connection is unavailable.
+    if (!editor.isEditorReadyToDiscard()) return;
+
     // Show toast notification when fallback mechanism kicks in (only once)
     if (!hasShownFallbackToast.current) {
       console.warn("Websocket Connection lost, your changes are being saved using backup mechanism.");
