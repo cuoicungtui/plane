@@ -1,452 +1,460 @@
-# CHANGE IMPACT — Plane Page Editor: Task và Whiteboard
+# CHANGE IMPACT — Plane Page Editor: Task inline và Whiteboard trong trang
 
-**Mã thay đổi:** PAGE-EMBED-001  
-**Ngày lập:** 18/09/2026  
-**Phiên bản tài liệu:** 0.2 — một số quyết định (D04, D08, D09, BOARD-07) đã được duyệt; phần còn lại vẫn DRAFT, chờ review  
-**Repository:** `cuoicungtui/plane`  
-**Mốc source đã truy vấn:** nhánh `preview`, commit `174243b565e483e24f057cf9add9fe59a9f818c3`  
-**Phạm vi kiểm chứng:** đọc source qua GitHub; chưa chạy ứng dụng, test, migration hoặc truy cập database đang vận hành.  
-**Người duyệt các quyết định đã chốt (D04, D08, D09, BOARD-07):** tuongdangvuongquoc901@gmail.com, 19/09/2026.
+**Mã thay đổi:** PAGE-EMBED-001
+**Phiên bản tài liệu:** 0.4 — thay toàn bộ mô hình task bằng "checklist nâng cấp thành work item khi @mention" (D18); thay thế phần task của bản 0.3
+**Ngày:** 19/09/2026
+**Người duyệt các quyết định đã chốt:** tuongdangvuongquoc901@gmail.com
+**Repository:** `cuoicungtui/plane`, nhánh triển khai `feature/page-editor-task-whiteboard`
+**Mốc source:** commit `54ca0555bb` (feat: add task and whiteboard embeds) + các sửa đổi trong phiên review 19/09
+**Phạm vi kiểm chứng:** đọc source trực tiếp trong checkout; chạy thử trên dev server thật tại `localhost:13200` (bao gồm phiên D18 — xem mục 13); chưa chạy migration trên dữ liệu vận hành.
 
-> Dùng tài liệu này làm mốc đối chiếu khi code. Phần **HIỆN TRẠNG** mô tả source đã đọc; phần **ĐỀ XUẤT** là thiết kế chưa được phê duyệt. Không coi việc chỉnh tài liệu là tự phê duyệt thay đổi. Source đang triển khai có thể khác mốc trên; phải hoàn thành bước G0 trước khi sửa code.
+> Bản 0.2 thiết kế task theo mô hình **thẻ nhúng chỉ đọc**. Bản 0.3 thay bằng **dòng task inline sửa được tại chỗ** dùng node `issue-embed-component` riêng + lệnh `/task`, nhưng gặp lỗi R08 (ô nhập nháp không nhận focus tin cậy) không sửa dứt điểm được. **Bản 0.4 bỏ hẳn node/lệnh `/task` riêng**, thay bằng D18: mở rộng ngay `taskItem` (to-do list có sẵn của Tiptap) để tự động nâng cấp thành work item thật khi người dùng gõ `@mention` một user bên trong — xem mục 2b. Board vẫn theo D09 (canvas nằm trong trang), không đổi.
+
+---
 
 ## 0. Tóm tắt để duyệt
 
-**Mục tiêu:** trong Plane Page, người dùng chèn được task thật và whiteboard tự do, không thay editor hoặc làm hỏng tài liệu cũ.
+Trong Plane Page, người dùng gõ `/task` để tạo hoặc nhúng một work item thật hiển thị thành một dòng gọn có checkbox, người thực hiện và hạn — sửa ngay trên dòng. Gõ `/board` để chèn một canvas vẽ trực tiếp trong trang.
 
-| Hạng mục | Đề xuất cho phiên bản đầu |
-|---|---|
-| `/task` | Chọn hoặc tạo work item qua cơ chế Plane hiện có; ưu tiên tái sử dụng `WorkItemEmbedExtensionConfig`. Không tạo một hệ thống task riêng. |
-| `/board` | Tạo whiteboard thuộc Page; chèn node giữ ID; scene được lưu riêng ở backend; Page hiển thị preview và mở modal để sửa. |
-| Lưu Page | Giữ luồng cộng tác hiện có: binary Yjs → HTML/JSON → API. Không tự chuyển sang ghi trực tiếp `description_json`. |
-| Bảo vệ dữ liệu | Schema thêm mới; không chuyển đổi toàn bộ Page cũ. Xóa block không đồng nghĩa xóa task/board. Có kiểm soát ghi đè khi hai tab sửa board. |
-| Phạm vi v1 | Chưa cộng tác realtime bên trong canvas; không làm Kanban mới; không nâng cấp Tiptap/React để phục vụ tính năng này. |
+| Hạng mục               | Quyết định v1                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Giao diện task         | Một dòng: checkbox, tiêu đề, người thực hiện, hạn (theo ngày). Giống ảnh Lark tham chiếu.                                      |
+| Dữ liệu task trong doc | **Chỉ lưu ID.** Tài liệu không giữ bản sao tiêu đề/trạng thái nào.                                                             |
+| Đồng bộ                | Doc → task: sửa trên dòng gọi API bằng quyền người dùng. Task → doc: dòng luôn render từ dữ liệu sống nên không có gì để lệch. |
+| Giao diện board        | Canvas nằm trong luồng nội dung trang, kéo được chiều cao. Không modal, không trang riêng.                                     |
+| Ngoài phạm vi v1       | Giờ trong hạn, chuông nhắc, vẽ realtime nhiều người, khay mẫu board, Markdown round-trip.                                      |
 
-**Ba nhóm phải xử lý cùng tính năng:** đường lưu và chuyển đổi tài liệu; quyền truy cập tài nguyên tham chiếu; vòng đời duplicate/undo/restore/export.
-
-**Kết luận thiết kế:** giữ hướng dùng Excalidraw, nhưng tách adapter canvas ở ứng dụng web khỏi cấu hình node dùng trên server. Tái sử dụng work-item embed hiện có, đồng thời kiểm tra sanitizer và renderer thay vì chỉ bật menu.
+**Nguyên tắc kỹ thuật xuyên suốt:** _luôn chèn node vào tài liệu trước, rồi mới điền ID vào_. Không bao giờ giữ một vị trí con trỏ rồi dùng lại sau một request bất đồng bộ.
 
 ---
 
-## 1. HIỆN TRẠNG — những gì đã xác nhận từ source
+## 1. HIỆN TRẠNG — những gì đã xác nhận từ source và từ chạy thử
 
-Các mã S bên dưới dẫn tới file nguồn tại đúng commit truy vấn; xem mục 13.
+| ID  | Phát hiện                                                                                                                                                                                                                    | Ý nghĩa                                                                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F01 | `Page` có `description_json`, `description_binary`, `description_html`, `description_stripped`; có `is_global` và quan hệ nhiều-nhiều với Project qua `ProjectPage`.                                                         | Không mặc định mỗi Page thuộc đúng một Project.                                                                                                                   |
+| F02 | **Nguồn dữ liệu gốc của Page là Yjs binary.** `apps/live` đọc binary trước; binary rỗng mới dựng lại từ HTML. Khi lưu, nó sinh binary + HTML + JSON rồi gọi API.                                                             | Mọi thiết kế lấy `description_json` làm gốc đều sai.                                                                                                              |
+| F03 | `yjs-utils.ts` dựng schema tài liệu từ `CoreEditorExtensionsWithoutProps` và `DocumentEditorExtensionsWithoutProps`.                                                                                                         | Node mới phải có cấu hình headless dùng chung, không chỉ React Node View.                                                                                         |
+| F04 | Đã có `WorkItemEmbedExtensionConfig`: block/atom, HTML tag `issue-embed-component`, attrs `entity_identifier`, `project_identifier`, `workspace_identifier`, `id`, `entity_name`. **Đã có dữ liệu thật trong các trang cũ.** | Giữ nguyên tên node và tên attrs. Đổi tên sẽ làm nội dung cũ không parse được.                                                                                    |
+| F05 | `WhiteboardEmbedExtensionConfig` đã thêm ở commit `54ca0555bb`: tag `whiteboard-embed-component`, attrs `id`, `board_identifier`, `page_identifier`, `workspace_identifier`, `schema_version`.                               | Giữ nguyên; bản 0.3 chỉ đổi cách hiển thị, không đổi schema.                                                                                                      |
+| F06 | Sanitizer `content_validator.py` đã được bổ sung `issue-embed-component` và `whiteboard-embed-component` cùng allowlist attrs tương ứng.                                                                                     | Rủi ro mất block qua đường HTML đã được xử lý.                                                                                                                    |
+| F07 | Slash menu lọc theo `title`, `description` và `searchTerms`. To-do list có sẵn `searchTerms: ["todo","task","list","check","checkbox"]`.                                                                                     | Gõ `/task` sẽ ra **cả** "To-do list" và "Work item". Đã kiểm chứng trên UI thật.                                                                                  |
+| F08 | `TExtensions` là `"ai" \| "collaboration-cursor" \| "issue-embed" \| "whiteboard" \| "slash-commands" \| "enter-key" \| "image"`. `useEditorFlagging` trả cố định `disabled: ["ai","collaboration-cursor"]`.                 | Cơ chế bật/tắt có thật và đang hoạt động; task/board không bị tắt.                                                                                                |
+| F09 | `Issue.target_date` là **DateField — chỉ ngày, không có giờ**.                                                                                                                                                               | Không thể hiện "6:00 PM" như Lark nếu không migration bảng issue. Đã quyết định bỏ ở v1.                                                                          |
+| F10 | **Không tồn tại model reminder nào** trong `apps/api/plane/db/models`.                                                                                                                                                       | Chuông nhắc là tính năng mới hoàn toàn, không phải nối dây cái sẵn có. Ngoài phạm vi v1.                                                                          |
+| F11 | `Issue.assignees` là M2M tới user. `State.group` có giá trị `"completed"`.                                                                                                                                                   | Đủ để làm người thực hiện và checkbox hoàn thành.                                                                                                                 |
+| F12 | Web app dùng `IssueService` nội bộ (`apps/web/core/services/issue/issue.service.ts`, route `/issues/`), xác thực bằng session.                                                                                               | **Không** dùng REST API công khai `work-items` (xác thực API key) — không đưa API key vào trình duyệt.                                                            |
+| F13 | `apps/live` chỉ có 4 endpoint: `/collaboration` (websocket), `/convert-document` (HTML vào → binary/json ra, **toàn bộ trang**), `/health`, `/pdf-export`.                                                                   | **Không có đường sửa một phần tài liệu đang lưu từ phía server.** Đây là lý do cốt lõi để không lưu bản sao tiêu đề trong doc.                                    |
+| F14 | PDF renderer có registry theo node type; node lạ không có children trả về một View rỗng.                                                                                                                                     | Node atom mới sẽ biến mất khỏi PDF nếu thiếu renderer.                                                                                                            |
+| F15 | Frontend lấy `page.project_ids?.[0]` cho toàn bộ Page API (`apps/web/core/store/pages/project-page.ts`). Toàn bộ route Page đều bắt buộc `project_id`; không có route Page cấp workspace.                                    | v1 chỉ hỗ trợ Page thuộc project; Page `is_global` không hiện `/task` và `/board`. Whiteboard dùng `projectId` **từ route đang mở**, không dùng `project_ids[0]`. |
+| F16 | **`@plane/editor` là package đã build.** `package.json` trỏ `main: ./dist/index.js`; app web import qua `/@fs/workspace/packages/editor/dist/index.js`. Không có alias tới `src`.                                            | Sửa source trong `packages/editor/src` **không có tác dụng** cho tới khi build lại. Xem mục 11.                                                                   |
+| F17 | Vite dev server (trong container `plane-app-web-1`) giữ cache dependency trong bộ nhớ và **không tự phát hiện** `dist` của workspace package đổi.                                                                            | Sau khi build lại phải xoá `apps/web/node_modules/.vite` và restart container.                                                                                    |
+| F18 | `useTiptapEditor(config, [editable])` trong `use-editor.ts` chỉ tạo lại Editor khi `editable` đổi. `extendedEditorProps` bị đông cứng từ lần dựng đầu.                                                                       | **Đã sửa** trong phiên review: thêm `extendedEditorProps` vào deps. Đây là điều kiện để `/task` và `/board` xuất hiện được.                                       |
 
-| ID | Phát hiện đã xác nhận | Ý nghĩa đối với thay đổi |
-|---|---|---|
-| F01 | `Page` có `description_json`, `description_binary`, `description_html`, `description_stripped`; có workspace, owner, access, lock, archive và quan hệ nhiều-nhiều với Project. `PageVersion` cũng có ba dạng nội dung. [S02] | Không suy ra JSON là dữ liệu gốc chỉ từ tên cột. Không mặc định mỗi Page chỉ thuộc một Project. |
-| F02 | `PageEditorBody` dùng `CollaborativeDocumentEditorWithRef`, truyền `isContentEditable`, realtime config, mention handler, file handler và `extendedEditorProps`. [S03] | Đây là một điểm nối nghiệp vụ Page với editor; cần giữ mentions, upload và collaboration. |
-| F03 | `apps/live` đọc binary trước. Binary rỗng thì chuyển HTML sang binary. Khi lưu, nó sinh binary base64, HTML và JSON rồi gọi API description. [S08][S09] | Trong đường cộng tác này, binary là đầu vào ưu tiên. Kết luận không tự động áp dụng cho mọi import/API bên ngoài chưa truy vết. |
-| F04 | `yjs-utils.ts` xây document schema từ `CoreEditorExtensionsWithoutProps` và `DocumentEditorExtensionsWithoutProps`, rồi chuyển Yjs ↔ ProseMirror/HTML. [S06][S07] | Node mới cần cấu hình headless dùng chung, không chỉ React Node View. |
-| F05 | Đã có `WorkItemEmbedExtensionConfig`: block/atom với `entity_identifier`, `project_identifier`, `workspace_identifier`, `id`, `entity_name`; HTML tag là `issue-embed-component`. React wrapper gọi `widgetCallback` bằng các ID. [S04][S05] | Có nền tảng tái sử dụng cho `/task`; việc tồn tại extension không chứng minh chức năng đã được bật hoàn chỉnh trong Page UI. |
-| F06 | `useExtendedEditorProps` trong nhánh core đang trả `{}`. `DocumentEditorAdditionalExtensions` đang đăng ký slash commands. [S15][S16] | Có điểm mở rộng phù hợp; cần nối callback nghiệp vụ, không đẩy API Plane vào package editor. |
-| F07 | To-do list trong slash menu đã có từ khóa tìm kiếm `task`. Menu có cơ chế nhận additional options. [S13] | `/task` cần phân biệt work item với checklist, tránh hai lựa chọn nhập nhằng. |
-| F08 | `PagesDescriptionViewSet` kiểm tra lock/archive, dùng `PageBinaryUpdateSerializer`, gọi task nền ghi log và version. Serializer kiểm tra/sanitize HTML. [S10][S11] | Tác động không dừng ở lưu một trường dữ liệu. |
-| F09 | `content_validator.py` sử dụng nh3. Danh sách custom tags đã đọc có mentions/images nhưng không liệt kê `issue-embed-component`; allowlist attributes cũng chưa khai báo riêng cho work-item embed. [S12] | Rủi ro tĩnh: custom tag/attrs bị loại ở đường HTML. Phải tái hiện bằng test; chưa khẳng định đã quan sát mất dữ liệu trên server thật. |
-| F10 | Duplicate Page đặt `description_binary = None`, giữ bản nội dung để tái dựng và gọi job sao chép asset. [S10] | HTML round-trip và remap board ID là bắt buộc khi duplicate. |
-| F11 | `page_transaction_task.py` hiện khai báo component map cho mention và image. [S17] | Không mặc định task/board embed đã được ghi log hay lập chỉ mục tham chiếu đầy đủ. |
-| F12 | PDF có node-renderer registry. Nhánh fallback trả children, hoặc View rỗng khi node lạ không có children. [S18] | Node atom mới có nguy cơ biến mất khỏi PDF nếu không có renderer/fallback rõ ràng. |
-| F13 | `IssueService` có `createIssue`, `retrieve`, `retrieveIssues` và các phương thức lấy danh sách work item. [S14] | Ưu tiên service hiện hữu; nhóm request theo project khi cần nhiều task để tránh gọi riêng từng node. |
-| F14 | Catalog khai báo Tiptap `^2.22.3`, `tiptap-markdown` `^0.8.10`, React/React DOM `19.2.8`; package editor dùng catalog và peer React `^19.0.0`. Đây là cấu hình khai báo, chưa đối chiếu bản thực cài trong lockfile/runtime. [S19][S20] | Không lấy tài liệu Markdown đời khác làm bằng chứng cho hành vi hiện tại. Pin phiên bản Excalidraw tương thích sau khi kiểm tra lockfile. |
-| F15 | `Page` có `is_global` (boolean) và `projects` là ManyToMany — một Page có thể không thuộc project nào hoặc thuộc nhiều project. Nhưng toàn bộ route API Page đọc được trong `apps/api/plane/app/urls/page.py` đều bắt buộc `project_id` trong path; không thấy route Page cấp workspace riêng cho trường hợp `is_global=True` hoặc nhiều project. **CHƯA XÁC MINH** frontend hiện tại chọn `project_id` nào để gọi API cho các Page này. | Route whiteboard đề xuất ở mục 5 (nested dưới `projects/{projectId}/pages/{pageId}/`) chỉ đúng nếu Page mục tiêu luôn có một `project_id` xác định để dùng. Phải điều tra xong ở G3 trước khi chốt route whiteboard; nếu không, route có thể sai cho Page global/đa-project. |
-
-### Luồng Page đang có
+### Luồng lưu Page đang có
 
 ```text
-Người dùng chỉnh Page
-  → PageEditorBody
-  → CollaborativeDocumentEditorWithRef / tài liệu Yjs
-  → Hocuspocus trong apps/live
-  → storeDocument
-  → getAllDocumentFormatsFromDocumentEditorBinaryData
-  → PageCoreService.updateDescriptionBinary
+Người dùng gõ → Editor (Tiptap) → tài liệu Yjs
+  → Hocuspocus (apps/live) → storeDocument
+  → sinh binary + HTML + JSON
   → PATCH .../pages/{pageId}/description/
-  → PagesDescriptionViewSet + PageBinaryUpdateSerializer
-  → Page: binary + HTML + JSON
-  → page_transaction / track_page_version
+  → PagesDescriptionViewSet (kiểm tra lock/archive, sanitize HTML)
+  → Page: binary + HTML + JSON → page_transaction / track_page_version
 ```
 
-Đường tải: lấy binary; nếu rỗng, lấy HTML rồi chuyển thành binary và lưu lại. Đây là luồng đã truy vết từ các file trên, chưa bao trùm mọi đường import, offline fallback hoặc công cụ ghi API trực tiếp. [S03][S07][S08][S09][S10]
+### Kết quả chạy thử trên dev server thật (19/09)
+
+| Bước                                             | Kết quả                                                                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Mở Page, gõ `/`                                  | Menu hiện đầy đủ; có "Work item" và "Whiteboard" đúng vị trí sau "Image" — **ĐẠT** (sau khi sửa F18 + build lại F16 + restart F17) |
+| Gõ `/task`                                       | Lọc còn "To-do list" và "Work item" — **ĐẠT**                                                                                      |
+| Chọn "Work item"                                 | Modal chọn work item mở, hiện danh sách task thật của project — **ĐẠT**                                                            |
+| Chọn một task rồi bấm thêm                       | **KHÔNG ĐẠT** — không có gì được chèn, tài liệu về rỗng. Nguyên nhân: xem R01.                                                     |
+| Gọi tay đúng chuỗi lệnh chèn trên cùng editor đó | **ĐẠT** — chứng minh schema và lệnh chèn không có lỗi; lỗi nằm ở vị trí chèn bị cũ.                                                |
 
 ---
 
-## 2. Phạm vi và các quyết định ĐỀ XUẤT
+## 2. Quyết định
 
-| ID | Quyết định đề xuất | Không bao gồm / giới hạn |
-|---|---|---|
-| D01 | Giữ `@plane/editor`, Tiptap/ProseMirror và pipeline Page hiện tại. | Không thay editor, không đổi nguồn dữ liệu Page sang JSON thuần. |
-| D02 | `/task` có hai thao tác: chọn task có sẵn hoặc tạo mới; kết quả là tham chiếu task. | Không biến checklist thành task; không thay đổi ý nghĩa `@user`; chưa sửa trạng thái task trực tiếp trong block. |
-| D03 | Dùng `@excalidraw/excalidraw` cho canvas v1; mở bằng modal phía client. | Không tích hợp tldraw/React Flow đồng thời; không thêm realtime canvas. |
-| D04 — **ĐÃ DUYỆT 19/09/2026** | Mỗi board thuộc một Page trong một workspace; nhiều block trong cùng Page có thể trỏ cùng board. | Chưa có board dùng chung để chỉnh sửa giữa nhiều Page ở v1. Muốn có board dùng chung nhiều Page phải xin duyệt riêng ở đợt sau, không tự mở lại quyết định này khi code. |
-| D05 | Scene lưu riêng; node chỉ giữ ID/phiên bản cấu trúc. | Không đưa scene, base64 ảnh, token, URL ký tạm thời hay trạng thái con trỏ vào nội dung Page. |
-| D06 | Người đọc/sửa board phải thỏa quyền Page hiện hành; server kiểm tra mỗi request. | Xem được Page không tự cấp quyền xem task được nhúng. |
-| D07 | Gỡ block, undo và redo chỉ tác động liên kết trong tài liệu. | Không tự xóa task/board vì block biến mất trong một lần autosave. |
-| D08 — **ĐÃ DUYỆT 19/09/2026** | Duplicate Page tạo bản sao board độc lập, không dùng chung board với bản gốc; ID board bản sao được thay mới hoàn toàn. Copy riêng một block whiteboard sang Page khác: **chặn, báo lỗi rõ ràng cho người dùng** (ví dụ "Chưa hỗ trợ copy whiteboard sang trang khác") — không tự tạo liên kết về board nguồn, không tự tạo board mới ngầm. | Không âm thầm để hai Page sửa cùng một board. Muốn hỗ trợ copy board sang Page khác ở đợt sau phải xin duyệt UX riêng, không tự mở lại quyết định này giữa lúc code. |
-| D09 — **ĐÃ DUYỆT 19/09/2026** | Khôi phục phiên bản Page khôi phục bố cục và tham chiếu. Trong v1, tham chiếu board mở scene đã lưu mới nhất — **không phải bản vẽ đúng thời điểm version đó**. UI phải hiển thị rõ điều này cho người dùng khi họ khôi phục một version Page có chứa board (ví dụ ghi chú "whiteboard hiển thị bản mới nhất, không theo lịch sử version của trang"). | Không cam kết lịch sử Page là lịch sử scene board. Muốn khôi phục chính xác scene theo thời điểm phải bổ sung versioning board và phạm vi riêng — không nằm trong v1, không tự làm thêm khi chưa duyệt. |
-| D10 | PDF/HTML/Markdown có fallback đọc được cho task/board. | Markdown không cam kết round-trip lossless; export không được làm biến đổi tài liệu nguồn. |
+Các quyết định dưới đây **đã được duyệt**. Không mở lại trong lúc code; muốn đổi phải xin duyệt riêng.
 
-**Điểm sản phẩm cần hiểu đúng:** whiteboard v1 gồm hình, chữ, đường nối và thao tác vẽ theo thư viện đã chọn. “Bảng” dạng lưới chỉnh sửa như spreadsheet bên trong canvas chưa được xác nhận; không coi bảng của Page là bảng của whiteboard. Không cam kết tương đương toàn bộ Lark Board.
+| ID   | Quyết định                                                                                                                                                                                                                                                                                                                                                                          | Giới hạn                                                                                                                                                                                                      |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D01  | Giữ `@plane/editor`, Tiptap/ProseMirror và pipeline Page hiện tại.                                                                                                                                                                                                                                                                                                                  | Không thay editor, không đổi nguồn dữ liệu Page sang JSON.                                                                                                                                                    |
+| D02  | **Task trong doc chỉ lưu ID.** Node giữ nguyên `issue-embed-component` với các attrs hiện có. Tài liệu không chứa bản sao tiêu đề, trạng thái, người thực hiện hay hạn.                                                                                                                                                                                                             | Không tạo bảng task riêng. Không đổi tên node.                                                                                                                                                                |
+| D03  | **Giao diện là một dòng gọn, đủ để biết việc gì/của ai/đang ở đâu/hết hạn khi nào mà không cần bấm vào:** icon trạng thái thật (không chỉ checkbox), tiêu đề, avatar người thực hiện, hạn có cảnh báo quá hạn. Checkbox là phím tắt hoàn thành, đi kèm chứ không thay thế icon trạng thái. Chi tiết ở TASK-05. Tiêu đề do node view hiển thị từ dữ liệu task, click để sửa tại chỗ. | Tiêu đề **không** là text của tài liệu → không bôi chọn liền mạch từ đoạn văn sang tiêu đề được. Đây là đánh đổi đã chấp nhận.                                                                                |
+| D04  | **Đồng bộ:** doc → task bằng lời gọi API từ trình duyệt với quyền của chính người dùng. Task → doc không cần đẩy gì cả vì dòng luôn render từ dữ liệu sống.                                                                                                                                                                                                                         | Không dùng `apps/live` để sửa work item. Không thêm cơ chế sửa tài liệu từ server (F13).                                                                                                                      |
+| D05  | **Luôn chèn node trước, điền ID sau.** Cả tạo mới lẫn nhúng task có sẵn đều chèn một dòng nháp vào tài liệu trước, rồi mới gọi API và điền ID.                                                                                                                                                                                                                                      | Không giữ `{from,to}` rồi dùng lại sau request bất đồng bộ. Bỏ dở dòng nháp thì xoá dòng, **không để lại task rác**.                                                                                          |
+| D06  | Checkbox chuyển task sang một trạng thái thuộc nhóm `completed` của project. Nhiều trạng thái hoàn thành thì lấy cái đầu tiên.                                                                                                                                                                                                                                                      | Không tự tạo trạng thái mới.                                                                                                                                                                                  |
+| D07  | Hạn dùng `target_date` sẵn có, **chỉ theo ngày**. Không có giờ, không có chuông nhắc.                                                                                                                                                                                                                                                                                               | F09, F10. Muốn thêm phải là đợt riêng, có migration riêng.                                                                                                                                                    |
+| D08  | `/task` và `/board` chỉ thao tác trong **project của route đang mở**. Page global hoặc không thuộc project không hiện hai lệnh này.                                                                                                                                                                                                                                                 | F15.                                                                                                                                                                                                          |
+| D09  | Board là **canvas nằm trong luồng nội dung trang**, kéo được chiều cao. Chế độ xem hiển thị canvas chỉ đọc tại đúng vị trí.                                                                                                                                                                                                                                                         | Không modal, không trang riêng. Chưa có vẽ realtime nhiều người ở v1.                                                                                                                                         |
+| D09a | **Thư viện canvas: `@excalidraw/excalidraw`.** Đã chốt từ bản 0.1, đã có trong `apps/web/package.json` (`"@excalidraw/excalidraw": "0.18.0"`, xác nhận lại 19/09). Lý do chọn: có React component nhúng trực tiếp, tự quản lý scene dạng JSON (phần tử + appState + files), không cần dựng canvas engine riêng.                                                                     | Không đổi sang tldraw/React Flow/framework khác. Không tự viết canvas engine. Đổi thư viện là quyết định riêng, phải xin duyệt lại vì kéo theo đổi toàn bộ định dạng `scene` đã lưu trong `page_whiteboards`. |
+| D10  | Mỗi board thuộc đúng một Page. Nhiều block trong cùng Page có thể trỏ cùng board.                                                                                                                                                                                                                                                                                                   | Chưa có board dùng chung giữa nhiều Page.                                                                                                                                                                     |
+| D11  | Duplicate Page tạo bản sao board độc lập, sao chép cả asset. Copy một block board sang Page khác bị **chặn kèm thông báo rõ**.                                                                                                                                                                                                                                                      | Không âm thầm để hai Page sửa chung một board.                                                                                                                                                                |
+| D12  | Khôi phục phiên bản Page khôi phục bố cục và tham chiếu; board mở **scene mới nhất**, không phải scene tại thời điểm đó. UI phải nói rõ điều này.                                                                                                                                                                                                                                   | Không cam kết lịch sử Page là lịch sử board.                                                                                                                                                                  |
+| D13  | Ảnh trong board được phép từ v1, lưu qua asset backend (MinIO) sẵn có.                                                                                                                                                                                                                                                                                                              | **Không** nhúng base64 vào scene. Xem R02.                                                                                                                                                                    |
 
-Excalidraw cung cấp React component, props nhận dữ liệu ban đầu/thay đổi và chế độ xem; ứng dụng chủ vẫn phải triển khai persistence, quyền và xử lý lỗi. Tài liệu props mô tả `onChange(elements, appState, files)`. [E01][E02] Kho Excalidraw công bố MIT; giữ thông báo giấy phép và kiểm tra bản package thực cài trước khi phát hành. [E05]
+**Ngoài phạm vi v1, đã thống nhất:** giờ trong hạn, chuông nhắc, vẽ realtime nhiều người, khay mẫu kéo thả cho board, Markdown round-trip.
 
 ---
 
-## 3. Hợp đồng hành vi và dữ liệu
+## 2b. D18 — Checklist tự nâng cấp thành work item khi @mention (thay thế toàn bộ mô hình `/task`)
 
-### 3.1 TASK — tái sử dụng tài nguyên có sẵn
+**Bối cảnh dẫn tới quyết định:** sau khi live-test `/task` (node `issue-embed-component` + dòng nháp) trên dev server thật, người dùng phản hồi trực tiếp ba điểm: (1) R08 — gõ tiêu đề ngay sau khi chọn "Work item" mất chữ do tranh chấp focus giữa `<input>` trong node view và ProseMirror; (2) icon/tên lệnh "Work item" dễ nhầm với "To-do list" có sẵn; (3) dòng đã resolve hiển thị quá to, muốn "chỉ 1 dòng nhỏ nhỏ bình thường". Người dùng sau đó tự đề xuất mô hình thay thế dựa trên một Page thật của chính họ: một checklist item bình thường **mặc định chỉ là checklist cục bộ**; nó chỉ trở thành work item thật **khi có `@mention` một user bên trong nó**. Đã chốt qua `AskUserQuestion`: nâng cấp **hoàn toàn tự động khi gõ @mention**, không có bước xác nhận thủ công.
+
+**D18 — Mở rộng `taskItem` tại chỗ thay vì thêm node riêng.** Dùng `TaskItem.extend({...})` (từ `@tiptap/extension-task-item`, node `taskItem` mà "To-do list" trong slash menu vốn đã tạo ra), không tạo một node/lệnh slash riêng cho task nữa.
+
+- Item giữ nguyên là checklist cục bộ (không gọi API) cho tới khi trong nội dung của nó xuất hiện một `mention` node có `entity_name === "user_mention"`.
+- Phát hiện được thì tự động gọi `onAutoCreate` tạo work item thật (`assignee_ids` = user vừa mention, `name` = text thuần của dòng tại thời điểm đó), rồi lưu `entity_identifier` (issue id) làm attr mới của chính node `taskItem` — không có node/id block riêng như `issue-embed-component`.
+- Từ lúc có `entity_identifier`: checkbox của item patch thẳng `state_id` của work item (nhóm `completed`/`unstarted`/`backlog`, theo đúng D06); sửa text sau đó debounce patch `name`; một trailer gọn (`TaskItemMeta` — avatar, hạn, link mở) hiện **cùng dòng, ngay sau text**, không phải thẻ/khối riêng.
+- Việc không còn `<input>` tuỳ biến nằm trong `contentDOM` của bất kỳ NodeView nào **xoá tận gốc nguyên nhân của R08**: gõ chữ diễn ra ngay trong nội dung `taskItem`/`paragraph` gốc của Tiptap — chỗ vốn đã hoạt động ổn định, không phải ô nhập tự vẽ tranh giành focus với ProseMirror.
+
+**Hệ quả cần ghi nhận, không phải lỗi:**
+
+- Lệnh slash `/task` và "Work item" **không còn tồn tại**. Chỉ còn "To-do list" (searchTerms có sẵn `["todo","task","list","check","checkbox"]`) — không còn nhầm lẫn hai lệnh vì chỉ còn một.
+- Tiêu đề work item được tạo từ `node.textContent`, **không bao gồm** phần hiển thị của mention (mention là atom node, `textContent` rỗng) — đã xác nhận qua test thật: gõ "Follow up with @user" tạo work item tên `"Follow up with"`, assignee đúng user. Đây là hành vi chấp nhận được vì assignee đã hiện riêng qua avatar trong trailer.
+- Vì node `issue-embed-component` không còn được đăng ký trong schema Document Editor (registry trong `document-extensions.tsx` chỉ build extension đó khi có `widgetCallback`, và `embed.issue` đã bị gỡ khỏi `use-extended-editor-extensions.tsx`), **nội dung Page cũ đã lưu bằng `issue-embed-component`** (nếu có, từ các phiên test bản 0.3) sẽ không còn node type tương ứng khi editor dựng schema. Xem R09 ở mục 7 — chưa phát hiện thấy nội dung như vậy trên Page test thật (`.../pages/6990bc64-deea-42ee-9062-54cf90c9f240`), nhưng chưa quét toàn bộ workspace.
+
+**Các mục sau đây của bản 0.3 coi như đã bị thay thế bởi D18, giữ lại trong tài liệu chỉ để tham chiếu lịch sử, không còn là đặc tả cần tuân theo:** D02–D08 (phần nói về node `issue-embed-component`/dòng nháp task), TASK-01 đến TASK-09 (mục 3.1), IMP01/IMP02/IMP07/IMP08/IMP09, AC01–AC04, T02–T04. D09–D13 (board) và D14–D17 (kiến trúc nhúng dùng chung cho họ B/canvas) **không đổi** — D18 chỉ thay task, board vẫn theo kiến trúc cũ.
+
+### D18.1 — Trailer một dòng bắt buộc + start date tách biệt due date
+
+**Bối cảnh:** sau khi D18 lên dev thật, người dùng gửi ảnh chụp một item đã promote ("đi chơi @quoctdv.hn") mà trailer (avatar + hạn) bị bể xuống dòng thứ hai, và phản hồi trực tiếp: _"để trên 1 dòng được ko. và rõ start date, duedate nếu có đc ko (có thể ko bắt buộc cả 2 hoặc 1 trong 2) những khi hiện vân biết start hay end / cả 2"_.
+
+- **Một dòng:** `TaskItemView` (`packages/editor/src/core/extensions/task-item-enhanced/extension.tsx`) đổi layout NodeView thành một hàng flex duy nhất — checkbox, rồi một `div` flex chứa `NodeViewContent` (đổi `inline` → `block min-w-0 flex-1 truncate`, tiêu đề dài giờ bị cắt bằng dấu `…` thay vì xuống dòng) và trailer (`shrink-0`, không bao giờ bị đẩy xuống dòng dưới nữa).
+- **Start date tách biệt due date, cả hai đều optional:** `TaskItemMeta` (`apps/web/core/components/pages/editor/embeds/task-item-meta.tsx`) thêm một `DateDropdown` thứ hai bind vào `issue.start_date` (field có sẵn trên `TIssue`, patch qua `IssueService.patchIssue` giống `target_date`), đặt **trước** dropdown due date. Phân biệt bằng icon riêng (`CalendarClock` cho start, mặc định `CalendarDays` cho due) và `placeholder`/`showTooltip` riêng ("Start date" / "Due date") — hover vào pill nào cũng biết ngay đó là loại nào, kể cả khi chỉ một trong hai được set. Không set thì dropdown hiện icon trơn (`border-without-text`), không chiếm chỗ bằng text.
+- **Đã live-test trên page thật** (`.../pages/6990bc64-deea-42ee-9062-54cf90c9f240`, item "đi chơi @quoctdv.hn"): trailer nằm đúng một dòng không bể; set start date = 07/09/2026 qua picker → PATCH `start_date` thành công (204, xác nhận lại bằng `fetch` trực tiếp API trả về `start_date: "2026-09-07"`, `target_date` giữ nguyên `"2026-09-17"` không bị ảnh hưởng); due date pill vẫn giữ hành vi cũ (tô đỏ khi overdue theo `shouldHighlightIssueDueDate`).
+
+### D18.2 — Nút xoá task thật + state ở đầu dòng, gạch ngang khi hoàn thành
+
+**Bối cảnh:** người dùng phản hồi trực tiếp bằng tiếng Việt: _"ko làm cơ chế xóa text mất task những có buttun người dùng xóa thật sự thì del task được ko. Nếu ok thì nên có thêm 'state' ở đầu task và hoàn thành thì gạch ngang"_ — tức là (1) xoá chữ trong dòng checklist **không được** kéo theo xoá work item thật; muốn xoá work item phải qua một nút xoá tường minh, có xác nhận; (2) đầu dòng (trước tiêu đề, cạnh checkbox) phải hiện trạng thái thật của task, không chỉ mỗi checkbox; (3) hoàn thành thì tiêu đề gạch ngang.
+
+- **(2) và (3) đã có sẵn từ D18/D18.1**, không cần sửa thêm: `TaskItemState` (`apps/web/core/components/pages/editor/embeds/task-item-state.tsx`) render `StateDropdown` ngay ở đầu dòng — trước `NodeViewContent` — trong `TaskItemView` (`packages/editor/src/core/extensions/task-item-enhanced/extension.tsx`); gạch ngang tiêu đề khi `checked` là hành vi `line-through` gốc của `taskItem` mà `TaskItem.extend()` kế thừa nguyên vẹn.
+- **(1) là phần mới.** Thêm nút xoá tường minh vào `TaskItemMeta` (`apps/web/core/components/pages/editor/embeds/task-item-meta.tsx`): icon `Trash2` cuối trailer, bấm mở `AlertModalCore` (component xác nhận xoá dùng chung của Plane, đã dùng ở nhiều nơi khác trong app) với nội dung cảnh báo xoá vĩnh viễn; xác nhận mới gọi `IssueService.deleteIssue`, thành công mới gọi `onDeleted()` — prop mới truyền từ `metaCallback` xuống, bind thẳng vào `deleteNode()` của chính node ProseMirror (`extension.tsx`). Lỗi xoá thì đóng dialog, giữ nguyên dòng, không âm thầm coi như đã xoá.
+- Xoá **chữ** trong dòng (Backspace/Delete/chọn rồi xoá) không đụng tới work item dưới bất kỳ hình thức nào — không có handler nào lắng nghe nội dung dòng để gọi xoá. Đây là hành vi mặc định của `taskItem`/ProseMirror, không phải logic tự viết, nên không có chỗ để vô tình nối dây xoá task vào đó.
+- Hai bug đồng bộ phát sinh trong lúc làm (không phải yêu cầu gốc, nhưng chặn test D18.2 nếu không sửa): `TaskItemState` và `TaskItemMeta` mỗi cái tự fetch một bản sao issue riêng qua `useTaskItemIssue` (hook mới, `apps/web/core/components/pages/editor/embeds/use-task-item-issue.ts`, trả thêm `refetch`) — tick checkbox patch thẳng `state_id` bằng đường khác (`onToggle` trong `use-extended-editor-extensions.tsx`) nên `StateDropdown` không tự biết mà đổi theo (dropdown đứng yên dù state đã đổi thật). Sửa bằng cách cả hai component theo dõi prop `checked` (đến từ chính node ProseMirror, luôn đúng ngay khi checkbox đổi) và gọi `refetch()` khi nó đổi. Refetch ngay lập tức lại đụng bug thứ hai: patch của checkbox là fire-and-forget, refetch chạy trước khi patch tới server thì đọc lại đúng giá trị **cũ** — sửa bằng `setTimeout(refetch, 600)` có cleanup, cùng kiểu debounce 500ms đã dùng cho đồng bộ tiêu đề.
+
+**Đã live-test trên page thật** (`.../pages/6990bc64-deea-42ee-9062-54cf90c9f240`, tab trình duyệt mới để tránh banner "View only" — xem chú thích môi trường bên dưới):
+
+| Kịch bản                                                                                                                                                           | Kết quả                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tick checkbox → `StateDropdown` tự cập nhật sang "Done"                                                                                                            | **ĐẠT** — `PATCH state_id` xác nhận qua `fetch` trực tiếp API khớp `e9ff1d9e-ee53-4492-ac28-c9c89c0e8d6e` (state nhóm `completed`), dropdown hiện "Done" sau ~600ms, không còn lệch.                                                                                                                                                                 |
+| Bỏ tick → `StateDropdown` cập nhật lại "Todo"                                                                                                                      | **ĐẠT** — API xác nhận `state_id` về `a545e64f-5451-47b5-a3d8-ba4b4c17b31c` (nhóm `unstarted`), dropdown khớp.                                                                                                                                                                                                                                       |
+| Xoá toàn bộ chữ trong dòng checklist đã có `entity_identifier` (issue `36b6a449-62e3-4a9d-b40e-d9ef3ca00642`) bằng Backspace/Delete thủ công                       | **ĐẠT — đúng yêu cầu cốt lõi.** Node checklist biến mất khỏi tài liệu (ProseMirror gộp về đoạn văn rỗng, hành vi chuẩn khi xoá hết nội dung một list item), nhưng `GET .../issues/36b6a449-.../` vẫn trả **200**, work item còn nguyên (`name: "t"` — tên còn lại từ lần patch cuối trước khi xoá hết chữ). Xoá dòng khỏi trang không xoá task thật. |
+| Bấm icon xoá (`Trash2`) trên một item khác đã promote (issue `9d1215d8-fdee-4b35-802b-f8b2237da6f5`) → `AlertModalCore` hiện đúng nội dung cảnh báo → bấm "Delete" | **ĐẠT.** Dòng biến mất khỏi trang ngay; `GET .../issues/9d1215d8-.../` trả **404** — work item đã bị xoá thật ở backend, đúng như dialog đã cảnh báo.                                                                                                                                                                                                |
+
+**Ghi chú môi trường (không phải lỗi code D18.2):** trong lúc test nhiều thao tác liên tục (patch API xen kẽ tick checkbox và gõ phím), trang gặp lại banner "Loading version details" / "View only" của tính năng version-history có sẵn của Plane (`core/components/pages/navigation-pane/tab-panels/info/version-history.tsx`), khiến editor tạm thời chỉ đọc. Bấm "Restore" thoát được ngay trong phiên đó; mở tab trình duyệt mới tới cùng URL tải sạch không dính banner. Không tìm thấy liên hệ với code D18/D18.1/D18.2; nghi do tương tác dồn dập giữa nhiều PATCH API và thao tác bàn phím trong thời gian ngắn gây xung đột trạng thái Yjs cục bộ, chưa điều tra sâu vì không nằm trong phạm vi yêu cầu.
+
+**Dữ liệu test còn sót lại (không phải lỗi):** issue `680d14ae-a294-46d6-a403-d08436f8dec2` (item cũ "đi chơi @quoctdv.hn" từ D18.1) vẫn còn sống ở backend (`GET` trả 200) nhưng không còn được checklist nào trên trang tham chiếu tới nữa — cấu trúc node của nó bị ProseMirror gộp về đoạn văn thường trong lúc dọn dẹp nội dung test bằng Backspace ở ranh giới đoạn (hành vi "lift node trước khi merge" chuẩn của ProseMirror khi Backspace ở đầu một đoạn rỗng ngay sau list item, không phải bug). Đây tình cờ lại là một minh chứng thực tế khác cho đúng yêu cầu cốt lõi của D18.2: sửa/xoá cấu trúc dòng không xoá work item đứng sau nó.
+
+---
+
+## 2a. Kiến trúc nhúng dùng chung — cho task, board, và các loại sau này (calendar...)
+
+**Bối cảnh:** task và board không phải hai tính năng độc lập. Chúng là hai đại diện đầu tiên của một khái niệm chung — "nhúng một thực thể sống vào tài liệu" — và sẽ có thêm calendar, có thể cả cycle/module sau này. Nếu code riêng từng loại từ đầu, mỗi loại mới thêm vào sẽ phải sửa lại đúng những chỗ đã sửa cho loại trước, và dễ quên một bước (đúng như R01/R02 đã xảy ra vì thiết kế ban đầu không có một khuôn chung).
+
+**D14 — Hai họ nhúng, không phải một.** Quan sát từ chính task và board cho thấy có hai họ hành vi khác hẳn nhau; ép chung một khuôn sẽ sai cho ít nhất một bên.
+
+|                   | **Họ A — dòng tham chiếu** (task, sau này: calendar event) | **Họ B — khối canvas** (board)                                   |
+| ----------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| Hình dạng         | Một dòng gọn trong luồng văn bản                           | Một khối chiếm không gian riêng, có chiều cao                    |
+| Dữ liệu trong doc | Chỉ ID, không có gì khác (D02)                             | ID + revision, nội dung thật nằm ở bảng riêng                    |
+| Tương tác         | Sửa trực tiếp trên dòng (checkbox, đổi người, đổi ngày)    | Mở/đóng chế độ vẽ, có trạng thái lưu riêng (BOARD-07)            |
+| Vòng đời tạo      | Chèn dòng nháp → điền ID (D05)                             | Gọi API tạo trước → chèn node mang ID (BOARD-02, đã đúng từ đầu) |
+
+**D15 — Một điểm nối dùng chung cho mọi loại nhúng, không rẽ nhánh theo tên.** `IEditorPropsExtended.embed` hiện đang khai báo tay từng loại (`issue`, `whiteboard`). Trước khi thêm calendar, chuẩn hoá thành một điểm nối theo khuôn:
+
+```ts
+embed?: Partial<Record<TEmbedKind, { widgetCallback: (attrs) => React.ReactNode }>>
+// TEmbedKind = "issue" | "whiteboard" | "calendar" | ...
+```
+
+`document-extensions.tsx` lặp qua danh sách loại đã đăng ký thay vì viết tay từng entry `WorkItemEmbedExtension`/`WhiteboardEmbedExtension` riêng lẻ. Thêm calendar là thêm một entry vào danh sách, không sửa logic lặp.
+
+**D16 — Checklist bắt buộc cho mọi loại nhúng mới (kể cả calendar sau này).** Ghi lại đúng những chỗ task và board đã phải chạm tới, để không quên bước nào lần sau:
+
+1. Node config headless (`core-without-props.ts`) — để `apps/live` dựng lại schema đúng.
+2. Node view + wiring vào `IEditorPropsExtended.embed` (D15).
+3. Allowlist trong `content_validator.py` — tag và đúng tập attrs, không hơn không kém.
+4. Renderer trong `apps/live/src/lib/pdf/node-renderers.tsx` — nếu không có, node biến mất khỏi PDF (F14/R03).
+5. Slash command option (`searchTerms`, `pushAfter`) trong `use-extended-editor-extensions.tsx`.
+6. Cờ trong `TExtensions` để bật/tắt độc lập (F08).
+7. Nếu là họ A: dùng đúng luồng "chèn dòng nháp trước, điền ID sau" (D05) — không tự chế cách chèn khác.
+8. Nếu là họ B: dùng đúng luồng "tạo tài nguyên trước, chèn node mang ID sau" + revision chống ghi đè (BOARD-02, BOARD-06).
+
+**D17 — Ngôn ngữ hiển thị dùng chung cho họ A.** Task và calendar event đều là "dòng tham chiếu", phải dùng chung một khung hiển thị (icon trạng thái bên trái, tiêu đề, các badge phụ bên phải, cùng chiều cao dòng, cùng kiểu hover) thay vì mỗi loại tự vẽ một kiểu. Dựng một component vỏ dùng chung (tạm gọi `EntityReferenceRow`) nhận icon, tiêu đề, danh sách badge — task dùng nó với badge trạng thái/người/hạn, calendar sau này dùng nó với badge thời gian/địa điểm.
+
+---
+
+## 3. Hợp đồng hành vi
+
+### 3.1 TASK — dòng inline
 
 ```text
-/task → chọn/tạo work item → API thành công và có ID thật
-      → kiểm tra Page còn mở và còn quyền sửa
-      → chèn WorkItemEmbed theo convention hiện có
-      → Page lưu qua collaboration hiện có
-      → block lấy thông tin task qua service có kiểm tra quyền
+/task
+ → chèn ngay một DÒNG NHÁP vào tài liệu (chưa có ID)
+ → người dùng gõ tiêu đề rồi Enter    ── hoặc ──  chọn task có sẵn từ modal
+ → gọi API tạo/lấy work item
+ → điền ID vào attrs của dòng đã nằm sẵn trong tài liệu
+ → từ đó dòng luôn render từ dữ liệu task sống
 ```
 
-**TASK-01:** Không tạo bảng `tasks` mới. Giữ node type theo `CORE_EXTENSIONS.WORK_ITEM_EMBED`; không đổi tên node/tag cũ. Các attrs hiện hữu phải được giữ đúng ý nghĩa. `id` của block là định danh instance, không phải ID task. [S04][S05]
+**TASK-01 — Node.** Giữ `CORE_EXTENSIONS.WORK_ITEM_EMBED` (`issue-embed-component`), giữ nguyên tên và ý nghĩa attrs hiện có. `id` là định danh của block, `entity_identifier` là ID work item. Node vẫn là atom: tiêu đề không phải nội dung tài liệu.
 
-**TASK-02:** Title, status và assignee hiển thị lấy từ work item hiện tại; không coi bản chụp trong Page là dữ liệu nghiệp vụ. Có trạng thái loading, không có quyền/không truy cập được, và lỗi mạng. Không hiển thị chi tiết task từ cache của người dùng/workspace khác.
+**TASK-02 — Dòng nháp.** Khi chưa có `entity_identifier`, node hiển thị một ô nhập trong dòng. Enter với tiêu đề rỗng, bấm ra ngoài, hoặc Escape → xoá node, không gọi API. Chỉ gọi API khi có tiêu đề thật.
 
-**TASK-03:** API tạo lỗi hoặc người dùng hủy thì không chèn tham chiếu hỏng. Tạo task thành công nhưng chèn/lưu Page thất bại thì giữ task, hiện liên kết và cho thử chèn lại; không tạo lại task hoặc tự xóa task. Chưa xác nhận API task hỗ trợ idempotency: không tự retry POST khi chưa biết request trước đã thành công hay chưa.
+**TASK-03 — Tạo task.** Gọi `IssueService` nội bộ (F12) với project của route đang mở, trạng thái mặc định của project. Tạo lỗi thì giữ nguyên dòng nháp và cho thử lại; **không** tự retry POST khi chưa biết request trước đã thành công hay chưa. Tạo thành công nhưng điền ID thất bại thì giữ task, hiện liên kết và cho nối lại — không tạo lại, không tự xoá.
 
-**TASK-04:** Khi modal mở, người khác vẫn có thể chỉnh Page. Vị trí chèn cần theo bookmark/transaction mapping hoặc cơ chế neo phù hợp với editor hiện tại; không giữ một số offset rồi dùng lại sau một request bất đồng bộ. Chuyển Page hoặc mất quyền trong lúc chờ phải hủy thao tác chèn.
+**TASK-04 — Vị trí chèn.** Node đã nằm sẵn trong tài liệu trước mọi lời gọi API, nên vị trí do ProseMirror tự quản lý. Không được giữ offset thô rồi dùng lại sau (đây chính là lỗi R01).
 
-**TASK-05:** Slash menu thể hiện rõ “Task / Work item” và “Checklist / To-do list”. Kiểm tra thứ tự tìm kiếm với `task`, `todo`, `checkbox`; không phá shortcut checklist cũ.
+**TASK-05 — Hiển thị: nhìn một dòng phải biết ngay "việc gì, của ai, đang ở đâu, hết hạn khi nào".** Chỉ hiện tiêu đề là không đủ. Dòng bắt buộc có bốn phần, mỗi phần lấy trực tiếp từ work item hiện tại chứ không phải bản chụp:
 
-### 3.2 BOARD — node tham chiếu mới
+| Phần            | Nguồn dữ liệu                                 | Component tái dùng                                                                                                  | Không được làm                                                                                                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trạng thái      | `issue.state_id` → tra `groupedProjectStates` | `StateIcon` (`packages/propel/src/icons/properties/state-icon.tsx`) — icon + màu đúng như list/kanban đang hiển thị | Checkbox **không thay thế** được việc này. Plane có nhiều trạng thái (backlog/todo/in-progress/done/cancelled), không phải nhị phân xong/chưa-xong. Checkbox chỉ là phím tắt để chuyển sang trạng thái `completed` đầu tiên (D06) — trạng thái thật vẫn phải hiện riêng bằng icon/màu đúng của nó. |
+| Tiêu đề         | `issue.name`                                  | —                                                                                                                   | Cắt bớt khi dài, không được ẩn hẳn.                                                                                                                                                                                                                                                                |
+| Người thực hiện | `issue.assignees`                             | Avatar theo đúng kiểu `MemberDropdown` đang vẽ ở nơi khác trong app                                                 | Task nhiều người thực hiện thì hiện được nhiều avatar hoặc số đếm, không được chỉ hiện người đầu tiên rồi im lặng bỏ phần còn lại. Chưa gán ai thì hiện rõ trạng thái "chưa gán", không để trống im lặng.                                                                                          |
+| Hạn             | `issue.target_date`                           | Định dạng ngày theo đúng kiểu `DateDropdown` đang hiển thị                                                          | Quá hạn phải có tín hiệu khác biệt (màu/nhãn) — nhìn dòng là biết trễ hay chưa, không phải tự so ngày trong đầu. Không có hạn thì hiện rõ "chưa đặt hạn".                                                                                                                                          |
 
-Tên dưới đây là **đề xuất**, chưa tồn tại trong source đã đọc:
+Phải có trạng thái đang tải, không có quyền, không tìm thấy và lỗi mạng cho toàn dòng. Không hiển thị chi tiết task từ cache của người dùng hoặc workspace khác. Bốn phần trên dùng chung khung `EntityReferenceRow` (D17), không tự vẽ layout riêng cho task.
 
-```json
-{
-  "type": "whiteboardEmbed",
-  "attrs": {
-    "id": "<UUID của block>",
-    "board_id": "<UUID của board>",
-    "schema_version": 1
-  }
-}
-```
+**TASK-06 — Sửa từ trong doc.** Checkbox, người thực hiện, hạn, tiêu đề đều sửa được trên dòng và ghi về API bằng quyền của người đang thao tác. Không đủ quyền thì dòng ở chế độ chỉ đọc, có lý do rõ ràng. Lỗi ghi phải hoàn lại hiển thị về giá trị cũ, không để người dùng tưởng đã lưu.
 
-HTML nội bộ đề xuất: `whiteboard-embed-component` với đúng các attrs trên. Schema headless, parser HTML, serializer và sanitizer phải dùng cùng contract. Không chèn trực tiếp một JSON node bằng cách PATCH riêng `description_json`.
+**TASK-07 — Làm mới dữ liệu.** Dòng đọc lại dữ liệu task khi mở trang, khi cửa sổ được focus lại, và sau mỗi lần chính nó ghi. Nếu app đã có store/sự kiện cập nhật work item thì dùng; polling chỉ là phương án dự phòng.
 
-**BOARD-01:** React Node View chỉ hiển thị preview/trạng thái và gọi callback mở board. Excalidraw cùng phần gọi API đặt tại ứng dụng web; cấu hình node dùng bởi `apps/live` không import canvas/browser APIs.
+**TASK-08 — Phân biệt với checklist.** Slash menu phải tách rõ "Work item" và "To-do list". Không đổi hành vi checklist cũ, không đổi shortcut Markdown `- [ ]`.
 
-**BOARD-02:** Tạo board thành công rồi mới chèn node. API tạo board dùng `creation_key` ổn định cho lần tạo để retry không sinh board trùng. Nếu chèn node thất bại, cho nối lại board đã tạo; không tự xóa tài nguyên có thể đang được tham chiếu.
+**TASK-09 — Xoá.** Xoá dòng khỏi tài liệu chỉ gỡ tham chiếu, **không** xoá work item.
 
-**BOARD-03:** Nội dung board gồm scene và phần app state cần giữ lâu dài. Không lưu toàn bộ app state UI, selection, collaborators hay trạng thái modal. Phải bảo toàn các thuộc tính scene cần thiết của đúng phiên bản thư viện, không tự “lọc gọn” gây mất binding. Tài liệu Excalidraw có tiện ích serialize/restore; kiểm tra chữ ký thực tế của phiên bản đã pin. [E02][E03]
+### 3.2 BOARD — canvas trong trang
 
-**BOARD-04:** Bản đầu không realtime nhưng vẫn có thể bị hai tab/người dùng cùng lưu. Mỗi lần ghi phải kèm `expected_revision`; server kiểm tra và tăng revision nguyên tử. Không dùng timestamp client làm khóa và không tự ghi đè khi xung đột.
+**BOARD-01 — Node.** Giữ `whiteboard-embed-component` với các attrs hiện có, bổ sung `height` cho D09. Cấu hình headless dùng chung cho `apps/live` không được import Excalidraw hay bất cứ API trình duyệt nào.
 
-**BOARD-05:** Trạng thái UI: loading → ready → dirty → saving → saved; thêm save-error, conflict, read-only và unavailable. Chỉ báo “Đã lưu” sau khi server xác nhận đúng lần lưu. Đóng modal khi dirty phải lưu xong hoặc hỏi bỏ thay đổi; không trông chờ `beforeunload` để bảo đảm lưu.
+**BOARD-02 — Tạo.** Gọi API tạo board với `creation_key` ổn định để retry không sinh board trùng. Theo D05, chèn node trước rồi điền `board_identifier` sau; chèn thất bại thì cho nối lại board đã tạo, không tự xoá tài nguyên có thể đang được tham chiếu.
 
-**BOARD-06:** Preview là dữ liệu dẫn xuất theo `preview_revision`, không phải scene gốc. Preview lỗi không làm mất scene đã lưu. Preview cũ phải được nhận diện; phản hồi đến trễ không được thay thế preview của revision mới hơn.
+**BOARD-03 — Canvas trong trang.** Khi có quyền sửa, canvas tương tác ngay tại block: vẽ, chữ, hình, mũi tên, chọn/kéo/đổi kích thước phần tử. Chế độ chỉ đọc hiển thị canvas không sửa được. Phải cách ly thao tác canvas khỏi phím tắt và selection của ProseMirror.
 
-**BOARD-07 — ĐÃ DUYỆT 19/09/2026:** Cho phép ảnh/upload trong whiteboard từ v1 — hệ thống đã có MinIO và database cho asset backend nên điều kiện tiên quyết đã đủ. Ảnh phải lưu bền vững qua asset backend hiện có (không nhúng base64 vào `scene`), khôi phục đúng mapping file ID khi mở lại, không dùng URL ký tạm thời làm địa chỉ vĩnh viễn. Quyết định mở tính năng không thay cho việc kiểm thử: T12 (ảnh qua session mới, URL hết hạn, đúng quyền/revision) vẫn phải chạy và đạt trước khi coi BOARD-07 là hoàn thành.
+**BOARD-04 — Chiều cao.** Kéo được, lưu vào attrs của node. Chiều rộng theo chiều rộng tài liệu. Mặc định khoảng 480px.
 
-**BOARD-08:** Không bật tùy ý iframe, tải scene từ URL ngoài hoặc chia sẻ qua dịch vụ hosted. Kiểm tra link, upload, preview và font/assets cho môi trường self-host. Tài liệu Excalidraw có cơ chế tự phục vụ font; cần kiểm tra cấu hình thay vì mặc định phụ thuộc CDN. [E01]
+**BOARD-05 — Nội dung lưu.** Scene gồm phần tử và phần app state cần giữ lâu dài. **Không** lưu app state UI, selection, collaborators, trạng thái modal. **Không** lưu base64 ảnh hay URL ký tạm (R02).
+
+**BOARD-06 — Ghi đồng thời.** Mỗi lần ghi kèm `expected_revision`; server kiểm tra và tăng revision nguyên tử. Xung đột thì giữ thay đổi cục bộ và yêu cầu tải lại; không tự ghi đè.
+
+**BOARD-07 — Trạng thái.** loading → ready → dirty → saving → saved, thêm save-error, conflict, read-only, unavailable. Chỉ báo "Đã lưu" sau khi server xác nhận đúng lần lưu đó.
+
+**BOARD-08 — Ảnh.** Upload qua `FileService`/asset backend hiện có; scene chỉ giữ asset ID; tải lại ảnh bằng endpoint asset bền vững. Phải khôi phục đúng mapping file ID khi mở lại trong phiên trình duyệt mới.
+
+**BOARD-09 — Tự phục vụ.** Không bật iframe tuỳ ý, không tải scene từ URL ngoài, không chia sẻ qua dịch vụ hosted. Kiểm tra font/assets chạy được trong môi trường self-host, không phụ thuộc CDN ngoài.
 
 ---
 
-## 4. Database impact — ĐỀ XUẤT
+## 4. Database impact
 
-### 4.1 Điều giữ nguyên
+### Giữ nguyên
 
-Không đổi/xóa cột nội dung Page; không backfill toàn bộ Page cũ; không thay schema work item chỉ để nhúng task. Chưa có bằng chứng cần một bảng quan hệ Page–Task riêng: node reference đủ cho yêu cầu hiển thị ban đầu. Nếu cần báo cáo “task sinh từ Page nào”, phải ghi thêm yêu cầu và truy vết metadata/quan hệ hiện hữu trước khi thêm bảng.
+Không đổi/xoá cột nội dung Page. Không backfill Page cũ. **Không thêm bảng nào cho task** — node tham chiếu là đủ, dữ liệu nằm trong work item sẵn có. Không đổi schema work item (D07 đã loại bỏ nhu cầu thêm giờ và reminder).
 
-### 4.2 Tài nguyên whiteboard mới
+### Bảng `page_whiteboards` (đã tạo ở commit `54ca0555bb`)
 
-Trước khi tạo model, hoàn thành G2 để xác nhận không có model tương đương cần tái sử dụng. Các trường dưới đây là thiết kế logic, không phải migration đã viết:
+| Trường                     | Vai trò                                    |
+| -------------------------- | ------------------------------------------ |
+| `id`                       | UUID board, khác UUID block                |
+| `workspace`, `page`        | Sở hữu; server xác định, không tin client  |
+| `engine`, `schema_version` | Nhận diện định dạng scene                  |
+| `scene`                    | JSON canvas đã xác thực; giới hạn 5MB      |
+| `asset_ids`                | Danh sách asset ID bền vững                |
+| `revision`                 | Server quản lý, kiểm soát ghi đồng thời    |
+| `creation_key`             | Chống tạo trùng do retry; unique cùng Page |
 
-| Trường | Mục đích / quy tắc |
-|---|---|
-| `id` | UUID board, không trùng với UUID block. |
-| `workspace_id` | Khớp workspace của Page, do server xác định. |
-| `page_id` | Page sở hữu. Không gán tùy ý `project_id` cố định vì Page có quan hệ nhiều Project. |
-| `engine`, `schema_version` | Nhận diện định dạng scene và hỗ trợ chuyển đổi trong tương lai. |
-| `scene` | JSONField cho dữ liệu canvas và app state bền vững đã xác thực; không nhét bytes ảnh. |
-| `revision` | Số phiên bản do server quản lý, dùng kiểm soát ghi đồng thời. |
-| `creation_key` | UUID cho một yêu cầu tạo; unique cùng Page để chống tạo trùng do retry. |
-| `preview_asset_id`, `preview_revision` | Tham chiếu preview tùy chọn; kiểu FK chốt sau khi kiểm tra asset model. |
-| Trường audit/xóa mềm | Tái sử dụng BaseModel/convention thực tế; chưa tự định nghĩa một hệ thống audit mới. |
+**Migration:** `0123_pagewhiteboard` đã được tạo lại bằng Django chuẩn. Trước khi merge phải chạy `makemigrations --check` và `migrate` trên database test cô lập có dữ liệu Page cũ. **Không chạy trên dữ liệu Plane đang dùng** cho tới khi toàn bộ kiểm tra cô lập đạt.
 
-Index tối thiểu phục vụ tra cứu theo Page/workspace và constraint chống trùng creation key. Mọi truy cập phải xác minh chuỗi workspace → Page → board. Không có FK database nào thay thế được kiểm tra quyền.
-
-**Migration:** chỉ thêm schema whiteboard và cấu trúc phụ thực sự cần. Dùng migration head thực tế của checkout, không tự đặt số migration trong tài liệu. Chạy trên database test có dữ liệu Page cũ; so sánh số lượng và nội dung trước/sau. Kiểm tra transaction, constraint và ảnh hưởng của code cũ trong giai đoạn triển khai.
-
-**Dữ liệu bị gỡ liên kết:** không tự purge khi một autosave không thấy node. Board có thể còn trong undo, lịch sử Page hoặc request đang chạy. Chưa có chính sách retention được duyệt thì giữ lại và ghi nhận tài nguyên chưa liên kết; không xây job xóa tự động trong đợt này.
-
-**Xóa Page:** phải theo quy tắc soft/hard delete thực tế của BaseModel và Page. Board phải không truy cập được khi Page không còn được phép truy cập; việc purge vật lý chỉ sau chính sách retention/backup. Không tùy tiện chọn CASCADE để giải quyết vòng đời.
+**Dữ liệu bị gỡ liên kết:** không tự purge khi một autosave không thấy node. Board có thể còn trong undo, lịch sử Page hoặc request đang chạy. Giữ lại và ghi nhận; không xây job xoá tự động trong đợt này.
 
 ---
 
-## 5. API và quyền truy cập — ĐỀ XUẤT
+## 5. API và quyền
 
-### API giữ nguyên
+### Task
 
-Tái sử dụng `IssueService.createIssue/retrieve/retrieveIssues` và đường Page description đang có. Không đổi request/response cũ nếu không có lý do đã duyệt. Các phương thức service task hiện dựng URL theo workspace, project và `serviceType`; phải dùng service/convention hiện tại, không hardcode một API khác. [S14]
+Dùng `IssueService` nội bộ (F12). Không thêm endpoint mới. Quyền work item được kiểm tra riêng bởi API task — **quyền đọc Page không mở rộng thành quyền đọc work item**. Người xem được Page nhưng không có quyền với task phải thấy trạng thái an toàn, không thấy nội dung task.
 
-### API whiteboard dự kiến
-
-Namespace cần bám route Page của checkout. Với Project Page, mẫu thiết kế là:
+### Whiteboard (đã có)
 
 ```text
 /api/workspaces/{slug}/projects/{projectId}/pages/{pageId}/whiteboards/
+/api/workspaces/{slug}/projects/{projectId}/pages/{pageId}/whiteboards/{boardId}/
 ```
 
-Đây là **route đề xuất**, không phải endpoint đã tồn tại.
+| Thao tác | Hợp đồng                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `POST`   | Tạo với `creation_key`; server xác định Page/workspace; retry cùng key không tạo thêm bản ghi |
+| `GET`    | Trả scene, revision, metadata sau khi kiểm tra quyền; không tin page/workspace do client gửi  |
+| `PATCH`  | Nhận scene + `expected_revision`; cập nhật có điều kiện nguyên tử; lệch revision trả `409`    |
 
-| Thao tác | Hợp đồng tối thiểu |
-|---|---|
-| `POST collection` | Tạo board với creation key; server xác định Page/workspace, trả ID + revision. Retry cùng key không tạo thêm bản ghi; key cũ với payload mâu thuẫn phải báo lỗi. |
-| `GET /{boardId}/` | Trả scene, revision, metadata/preview sau khi kiểm tra quyền. Không tin page/workspace do node cung cấp. |
-| `PATCH /{boardId}/` | Nhận scene + expected revision; cập nhật có điều kiện nguyên tử; trả revision mới. Payload sai/missing revision không được ngầm ghi đè. |
-| Đường preview/asset | Tái sử dụng asset pipeline nếu quyền/lifecycle phù hợp; xác thực board/Page và revision. Không cho truy cập công khai chỉ vì biết URL. |
-
-Xung đột đề xuất trả `409` cùng mã lỗi ổn định; lỗi payload `400`, lỗi quá giới hạn `413`; `401/403/404` phải theo convention xác thực và chống lộ tài nguyên của repo. Không dùng `404` để phân biệt công khai “board có tồn tại nhưng thuộc workspace khác”.
-
-**Quyền sửa board** phải xét Page editable, owner/access, tư cách thành viên, guest, project archive, Page archive/lock và tình trạng bị xóa theo policy hiện tại. Không chỉ dựa vào nút disabled ở frontend. Khóa Page sau khi modal mở phải khiến lần lưu tiếp theo bị từ chối an toàn.
-
-**Task** được kiểm tra quyền riêng qua API task; quyền đọc Page không mở rộng quyền đọc work item. Export và preview cũng phải tuân theo cùng nguyên tắc, không dùng tài khoản đặc quyền để đưa dữ liệu kín vào Page dễ xem hơn.
+`expected_revision` chỉ chấp nhận số nguyên thật (`type(x) is int`), từ chối boolean. Page đang khoá hoặc archive bị từ chối `403`. Quyền đi qua `ProjectPagePermission`, đã bao gồm xử lý Page riêng tư.
 
 ---
 
-## 6. Ma trận ảnh hưởng và phạm vi sửa
+## 6. Ma trận ảnh hưởng
 
-`SỬA` = dự kiến cần sửa; `KIỂM TRA` = có dependency, chỉ sửa khi có bằng chứng; `MỚI` = vị trí đề xuất, chưa phải file hiện hữu.
+`SỬA` = dự kiến sửa · `GIỮ` = đã làm xong, không đụng · `MỚI` = chưa tồn tại
 
-| ID | Thành phần / file đã đọc hoặc vị trí dự kiến | Hành động và rủi ro | Test liên quan |
-|---|---|---|---|
-| IMP01 | `packages/editor/src/extensions/work-item-embed/{extension-config.ts,extension.tsx}` | KIỂM TRA/tái sử dụng; tránh đổi node schema làm hỏng nội dung cũ. | T02,T06 |
-| IMP02 | `packages/editor/src/extensions/document-extensions.tsx`; `slash-commands/command-items-list.tsx` | SỬA điểm mở rộng có giới hạn theo Document Editor; phân biệt task/checklist. | T04,T05 |
-| IMP03 | `apps/web/core/components/pages/editor/editor-body.tsx`; `hooks/pages/use-extended-editor-extensions.ts` | SỬA nối handlers/Page context; giữ collaboration, mentions, editable và upload. | T01,T05,T07,T10 |
-| IMP04 | `packages/editor/src/extensions/whiteboard-embed/` — MỚI | Config headless + Node View mỏng; không import Excalidraw vào đường server. | T06,T16,T17 |
-| IMP05 | `packages/editor/src/extensions/core-without-props.ts`; `helpers/yjs-utils.ts` | SỬA registry document schema; kiểm tra converters. Không bắt buộc sửa thuật toán converter nếu đăng ký schema là đủ. | T01,T06,T07 |
-| IMP06 | `apps/live/src/extensions/database.ts`; `services/page/core.service.ts` | KIỂM TRA đường lưu/tải và contract; không tạo đường ghi Page mới. | T06,T07,T18 |
-| IMP07 | `apps/api/plane/app/serializers/page.py`; `utils/content_validator.py` | SỬA allowlist tối thiểu cho task/board; giữ xác thực và chống XSS, không tắt sanitize. | T06,T19 |
-| IMP08 | `apps/web/core/services/issue/issue.service.ts` | TÁI SỬ DỤNG; chỉ sửa service khi API/nhu cầu thực tế thiếu. Cần locate modal/picker hiện có trước khi làm UI mới. | T02,T03,T10 |
-| IMP09 | Model/serializer/view/URL/migration whiteboard trong `apps/api/plane/` — MỚI, tên cụ thể chốt tại G2 | Schema, auth, revision, idempotent create; rủi ro cao về dữ liệu/quyền. | T08,T09,T10,T18,T19 |
-| IMP10 | Adapter/modal/service whiteboard ở `apps/web/core/` — MỚI, đường dẫn chốt trước code | Persistence, preview, lỗi lưu, focus/keyboard, client-only loading. | T08,T09,T11,T12,T17 |
-| IMP11 | `apps/api/plane/app/views/page/base.py`: duplicate, description, delete | SỬA nhánh duplicate/remap board khi cần; kiểm tra archive/lock/delete; không chia sẻ scene ngoài ý muốn. | T10,T13,T14 |
-| IMP12 | `apps/api/plane/db/models/page.py`: PageVersion; `bgtasks/page_transaction_task.py` | KIỂM TRA lịch sử/ref tracking. PageLog không được dùng như danh mục quyền hay nguồn duy nhất để purge board. | T13,T15 |
-| IMP13 | `apps/live/src/lib/pdf/node-renderers.tsx` và export callers | SỬA renderer/fallback; dữ liệu tham chiếu phải được resolve đúng quyền, không biến block thành khoảng trắng. | T16 |
-| IMP14 | `packages/editor/package.json`; manifest ứng dụng sở hữu canvas; `pnpm-workspace.yaml`; `pnpm-lock.yaml` | SỬA có kiểm soát dependency mới; giữ một React; pin bản phù hợp. Lockfile chưa được kiểm tra trong lượt review này. | T17 |
-| IMP15 | Read-only/version views, Markdown/HTML export/import, offline cache và asset pipeline | KIỂM TRA bổ sung tại G3: xác định file/call site thực tế rồi bổ sung vào bảng trước khi sửa. | T01,T06,T12,T15,T16 |
-
-Không hiểu bảng này là “sửa tất cả các file”. Mỗi thay đổi phải có lý do và evidence. Vùng MỚI/G3 phải được cụ thể hóa tại checkout, không đặt tên file giả rồi coi là đã tồn tại.
+| ID    | Thành phần                                                                                            | Hành động                                                                                                                                                          |
+| ----- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IMP01 | `packages/editor/src/core/extensions/work-item-embed/extension-config.ts`                             | GIỮ — không đổi schema, không đổi tên                                                                                                                              |
+| IMP02 | `packages/editor/src/core/extensions/work-item-embed/extension.tsx`                                   | SỬA — node view từ thẻ lớn thành dòng `EntityReferenceRow` (D17) có `StateIcon`, avatar người thực hiện, hạn có cảnh báo quá hạn, checkbox; hỗ trợ trạng thái nháp |
+| IMP03 | `packages/editor/src/core/extensions/whiteboard/*`                                                    | SỬA — thêm attr `height`; node view render canvas trong trang thay vì thẻ preview                                                                                  |
+| IMP04 | `packages/editor/src/core/extensions/core-without-props.ts`                                           | GIỮ — cả hai node đã đăng ký                                                                                                                                       |
+| IMP05 | `packages/editor/src/ce/extensions/document-extensions.tsx`                                           | GIỮ — đã tôn trọng `disabledExtensions`                                                                                                                            |
+| IMP06 | `packages/editor/src/core/hooks/use-editor.ts`                                                        | **ĐÃ SỬA** — thêm `extendedEditorProps` vào deps (F18)                                                                                                             |
+| IMP07 | `apps/web/core/hooks/pages/use-extended-editor-extensions.tsx`                                        | SỬA — lệnh `/task` chuyển sang chèn dòng nháp; bỏ cơ chế CustomEvent + range                                                                                       |
+| IMP08 | `apps/web/core/components/pages/editor/embeds/page-task-embed-picker.tsx`                             | SỬA — bỏ việc giữ `range`; modal chỉ trả ID về cho node đã nằm sẵn trong doc (R01)                                                                                 |
+| IMP09 | `apps/web/core/components/pages/editor/embeds/page-issue-embed.tsx`                                   | SỬA — thành dòng gọn; thêm checkbox, người thực hiện, hạn, sửa tiêu đề tại chỗ                                                                                     |
+| IMP10 | `apps/web/core/components/pages/editor/embeds/page-whiteboard-embed.tsx`                              | SỬA — canvas trong trang, kéo chiều cao, **và sửa R02**                                                                                                            |
+| IMP11 | `apps/api/plane/app/views/page/whiteboard.py`, `serializers/whiteboard.py`, `db/models/whiteboard.py` | GIỮ — backend board đã đạt                                                                                                                                         |
+| IMP12 | `apps/api/plane/app/views/page/base.py` (duplicate)                                                   | GIỮ — clone board + copy asset + remap đã làm                                                                                                                      |
+| IMP13 | `apps/api/plane/utils/content_validator.py`                                                           | GIỮ — allowlist đã đủ                                                                                                                                              |
+| IMP14 | `apps/live/src/lib/pdf/node-renderers.tsx`                                                            | SỬA — thêm renderer cho hai node; không để biến thành khoảng trắng (F14)                                                                                           |
+| IMP15 | Read-only view, version restore, export Markdown/HTML                                                 | KIỂM TRA — xác định call site thật rồi bổ sung                                                                                                                     |
 
 ---
 
-## 7. Rủi ro ưu tiên
+## 7. Rủi ro và lỗi đang mở
 
-| ID | Rủi ro | Cách kiểm soát bắt buộc |
-|---|---|---|
-| R01 | UI hiểu node nhưng converter/server không hiểu → lỗi lưu hoặc mất block. | Đăng ký schema headless; test binary ↔ JSON ↔ HTML và restart. |
-| R02 | Sanitizer bỏ tag/attrs, nhất là đường duplicate qua HTML. | Allowlist hẹp cho node; test với sanitizer thật, đồng thời thử payload độc hại. |
-| R03 | Người xem Page đọc được task/board/preview không có quyền. | Kiểm tra tài nguyên trên server cho mọi đường đọc/ghi/export/asset. |
-| R04 | Hai tab ghi đè scene dù không làm realtime. | Atomic expected-revision; giữ draft khi conflict; không auto-force-save. |
-| R05 | Tạo tài nguyên thành công nhưng chèn node/lưu Page thất bại. | Retry liên kết, idempotent board create; không tạo/xóa bù mù quáng. |
-| R06 | Undo/delete block/duplicate/restore làm mất hoặc chia sẻ nhầm board. | Quy tắc D07–D09, mapping ID và test vòng đời. |
-| R07 | Canvas kéo browser code vào apps/live hoặc tăng nặng mọi editor. | Adapter ở web; lazy load; schema server thuần; kiểm tra build/SSR. |
-| R08 | Rollback về bản không biết node rồi người dùng lưu → mất dữ liệu mới. | Rollback về bản đọc được node; tắt thao tác mới nhưng giữ parser/renderer/schema. |
-| R09 | Preview/ảnh chỉ tồn tại local hoặc URL tạm; mở lại mất hình. | Asset backend, revision metadata và test phiên trình duyệt mới. |
-
----
-
-## 8. Các bước kiểm chứng phải hoàn thành trước khi code
-
-| Gate | Việc agent cần làm | Điều kiện qua |
-|---|---|---|
-| G0 — Đúng phiên bản | Ghi remote, branch, HEAD, working-tree changes; so với commit baseline. Xác minh phiên bản build/server cần thay đổi nếu có quyền truy cập. Không reset/checkout đè công việc đang dở. | Có baseline mới được xác nhận; ghi rõ phần chưa biết của deployment; cập nhật phát hiện bị thay đổi bởi commit mới. |
-
-> **Ghi chú của chủ repo (19/09/2026):** nhánh chính (`main`) đang có công việc khác đang làm, nhưng khu vực Page chưa bị đụng tới bởi công việc đó; nhánh `preview` được dùng để review trước khi merge. Vì vậy F01–F15 được coi là áp dụng được cho khu vực Page, **nhưng agent vẫn phải tự xác nhận lại trên đúng nhánh sẽ code thật (không giả định là `main` hay `preview`)** trước khi sửa, vì nhánh chính có thể đã có commit mới hơn `174243b...` kể từ lúc review.
-| G1 — Dependency | Đọc lockfile, catalog, manifest app; pin Excalidraw ổn định và kiểm tra React, Tiptap, SSR, build/license. | Ghi phiên bản thực tế và đường import; không tự nâng React/Tiptap hoặc dùng `--force` để che xung đột. |
-| G2 — Model, quyền và asset | Kiểm tra toàn repo có whiteboard tương đương không; đọc BaseModel, ProjectPagePermission, migration head, asset model/service và task picker/create modal. | Có tên model/file/route cụ thể; mapping quyền và lifecycle rõ; tái sử dụng trước khi tạo mới. |
-| G3 — Đủ call sites | Truy vết read-only editor, version restore, duplicate, copy/paste, Markdown/HTML/PDF, cache/offline, import và đường ghi API trực tiếp liên quan. **Bắt buộc bao gồm F15**: xác định frontend hiện tại lấy `project_id` nào để gọi API cho Page `is_global=True` hoặc thuộc nhiều project. | Bổ sung file/function và test cho những đường thực sự có trong checkout; không ghi “không có” chỉ vì chưa tìm thấy. F15 phải có câu trả lời cụ thể (tên file/function), không được bỏ qua. |
-| G4 — Quyết định sản phẩm | D04, D08, D09, BOARD-07 **đã duyệt** (xem mục 2 và 3.2) — không cần review lại, không tự mở lại các lựa chọn khác. Mức hỗ trợ bảng dạng lưới trong canvas — **giữ nguyên là KHÔNG hỗ trợ ở v1**. | Các giới hạn v1 hiển thị rõ, không tự hứa tính năng ngang Lark hoặc full board history. |
-
-Thiếu dữ liệu runtime thì đánh dấu `CHƯA XÁC MINH` và nêu ảnh hưởng. Không đoán database đang chạy từ model trong repo. Gate phải dựa vào bằng chứng, không chỉ đánh dấu checkbox.
+| ID        | Vấn đề                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Trạng thái                                                                                                                                                                                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R01       | `page-task-embed-picker.tsx` giữ `{from,to}` bắt lúc gõ `/task` rồi dùng lại sau khi modal đóng → chọn task xong không chèn được gì.                                                                                                                                                                                                                                                                                                                                      | **ĐÃ SỬA (19/09), đã xác nhận trên dev server thật.** Bỏ hẳn picker/CustomEvent; `/task` giờ chèn thẳng một node nháp (`entity_identifier` rỗng) trong cùng lệnh còn `range` hợp lệ (đúng D05, theo pattern `@mention` có sẵn). Đã xác nhận nhiều lần: node luôn chèn được, không còn tài liệu về rỗng.                                                |
+| R02       | `page-whiteboard-embed.tsx` gửi thẳng `files` của Excalidraw lên server, trong đó có `dataURL` base64 đầy đủ của từng ảnh.                                                                                                                                                                                                                                                                                                                                                | **ĐÃ SỬA (19/09).** Dùng `serializeAsJSON(elements, appState, files, "database")` — hàm chính chủ Excalidraw, xác nhận qua đọc trực tiếp source đã cài (`chunk-3KPV5WBD.js:17928`): `files` bị bỏ hẳn ở chế độ `"database"`. Type-check qua; chưa test tạo board có ảnh thật trên UI trong phiên này.                                                  |
+| R08       | **Ô nhập tiêu đề của dòng nháp task không nhận focus tin cậy.** Node nháp chèn đúng (R01 đã hết), nhưng gõ ngay sau khi chọn "Work item" có xác suất cao chữ lọt vào tài liệu chứ không vào ô nhập — đã tái hiện nhiều lần trên dev server thật. Nghi do ProseMirror giữ `NodeSelection` trên chính node atom vừa chèn và giành lại DOM focus, không đơn thuần là race thời gian (đã thử `requestAnimationFrame`, rồi 2 lần `setTimeout` so le, đều không thắng ổn định). | **ĐÃ HẾT HIỆU LỰC DO ĐỔI KIẾN TRÚC (D18, 19/09).** Không sửa bug này trực tiếp — bỏ hẳn nguyên nhân: D18 xoá `<input>` tuỳ biến khỏi `contentDOM`, gõ chữ diễn ra trong nội dung gốc của `taskItem`/`paragraph`. Đã xác nhận trên dev server thật: gõ liên tục ngay sau khi chọn "To-do list" trong slash menu, không rớt chữ, không tranh chấp focus. |
+| R09 — mới | **Nội dung Page cũ có thể chứa node `issue-embed-component` không còn được đăng ký trong schema** sau khi D18 gỡ `embed.issue`/`WorkItemEmbedExtension` khỏi `document-extensions.tsx` registry. Chưa quét toàn bộ workspace; Page test thật đã kiểm tra (`.../pages/6990bc64-deea-42ee-9062-54cf90c9f240`) không có nội dung loại này nên chưa tái hiện được lỗi tải/hiển thị.                                                                                           | **ĐANG MỞ — chưa quét, chưa có bằng chứng ảnh hưởng thật.** Trước khi merge: `grep` toàn bộ `description_html`/`description_json` trong DB tìm `issue-embed-component`; nếu có Page thật chứa node này, quyết định giữ parser tối thiểu (đọc/hiển thị fallback, không cần tạo mới được) hay dọn dữ liệu test.                                          |
+| R03       | Node atom biến mất khỏi PDF nếu thiếu renderer (F14).                                                                                                                                                                                                                                                                                                                                                                                                                     | Chưa xử lý — IMP14.                                                                                                                                                                                                                                                                                                                                    |
+| R04       | Canvas kéo mã trình duyệt vào `apps/live` hoặc làm nặng mọi editor.                                                                                                                                                                                                                                                                                                                                                                                                       | Kiểm soát: adapter ở web, lazy load, schema server thuần; kiểm tra build/SSR.                                                                                                                                                                                                                                                                          |
+| R05       | Sửa `packages/editor/src` mà quên build lại → thay đổi không có tác dụng, dễ tưởng nhầm là lỗi code (F16, F17).                                                                                                                                                                                                                                                                                                                                                           | Xem mục 11; đã mất nhiều giờ vì điều này.                                                                                                                                                                                                                                                                                                              |
+| R06       | Hai tab cùng ghi board.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Đã có `expected_revision` + `409`; cần test.                                                                                                                                                                                                                                                                                                           |
+| R07       | Người xem Page đọc được task không có quyền.                                                                                                                                                                                                                                                                                                                                                                                                                              | Kiểm tra quyền work item riêng, mọi đường đọc/ghi/export.                                                                                                                                                                                                                                                                                              |
 
 ---
 
-## 9. Kế hoạch thực hiện sau khi được duyệt
+## 8. Còn phải xác minh trước khi code
 
-| Bước | Đầu ra cần có | Điều kiện trước khi chuyển bước |
-|---|---|---|
-| P0 | Hoàn thành G0–G4, bổ sung file/call sites và duyệt thiết kế. | Không code tính năng trước khi có lệnh triển khai. |
-| P1 | Fixture Page cũ/mới và test mô tả hành vi hiện có; cấu hình node/task reference, headless schema, sanitizer/HTML fallback. | Test round-trip và regression cũ; ghi lỗi có sẵn riêng. |
-| P2 | Hoàn thiện `/task` trên service/node hiện hữu; phân biệt checklist; xử lý lỗi và quyền. | T02–T06 đạt trên môi trường test. |
-| P3 | Schema/API whiteboard thêm mới, quyền, revision/idempotency, test DB. | Migration kiểm tra trên dữ liệu mẫu; không tác động nội dung Page cũ. |
-| P4 | Node board, modal Excalidraw, lưu/tải, preview và asset adapter. | Mở lại được scene; save/conflict/close/error có bằng chứng. |
-| P5 | Duplicate/remap, delete/undo, version semantics, read-only và export. | Không mất block hoặc lộ dữ liệu qua đường phụ. |
-| P6 | Build/test liên ứng dụng; triển khai thử có feature flag; kiểm tra rollback. | Chỉ bật tạo mới khi các service/clients tham gia đã hỗ trợ node. |
-
-Đây là thứ tự logic, không phải lịch ngày công. Có thể chia `/task` và `/board` thành hai đợt nhỏ; cả hai vẫn phải theo contract về dữ liệu/quyền.
+| Gate     | Nội dung                                                                                                                         | Điều kiện qua                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1       | Xác định component/API thật cho: chọn người thực hiện, chọn ngày, lấy trạng thái `completed` mặc định của project.               | **ĐÃ QUA (19/09).** `MemberDropdown` (`apps/web/core/components/dropdowns/member/dropdown.tsx`), `DateDropdown` (`apps/web/core/components/dropdowns/date.tsx`) — cả hai tự quản lý fetch, dùng thẳng. Trạng thái hoàn thành: `groupedProjectStates["completed"]` trong `state.store.ts:120`, cập nhật qua `updateIssue(projectId, issueId, { state_id })` (đã thấy dùng ở `issue-layouts/list/block.tsx:39`). Plane không có cờ boolean completed — hoàn thành nghĩa là đổi sang state đầu tiên của nhóm `completed`. |
+| G2       | Xác nhận Excalidraw nhúng inline hoạt động trong ProseMirror node view: phím tắt, selection, cuộn trang, kéo thả không xung đột. | **CHƯA QUA** — mới nghiên cứu API (serializeAsJSON, addFiles), chưa dựng bản thử chạy thật trong node view. Vẫn phải làm ở P0.                                                                                                                                                                                                                                                                                                                                                                                         |
+| G3       | Truy vết read-only editor, version restore, copy/paste, export PDF/HTML/Markdown cho hai node.                                   | Chưa làm — vẫn ở P0.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| G4       | Xác nhận app đã có sự kiện/store cập nhật work item để dùng cho TASK-07, hay phải dùng focus/refetch.                            | **ĐÃ QUA (19/09).** Không có event bus cập nhật work item; node view đọc thẳng từ mobx store (`useMember()`, tương tự cho issue) nên tự động re-render khi store đổi — đúng cách `@mention` đang làm ở `apps/web/core/components/editor/embeds/mentions/user.tsx`. Dùng lại đúng pattern: store-backed, không fetch riêng trong node view.                                                                                                                                                                             |
+| G5 — mới | Cách lưu scene không chứa base64 (R02).                                                                                          | **ĐÃ QUA (19/09).** `serializeAsJSON(elements, appState, files, "database")` — đã đọc trực tiếp implementation trong `node_modules/.pnpm/@excalidraw+excalidraw@0.18_.../dist/dev/chunk-3KPV5WBD.js:17928`, xác nhận `files` bị bỏ hẳn khi `type === "database"`.                                                                                                                                                                                                                                                      |
 
 ---
 
-## 10. Acceptance criteria và test đối chiếu
+## 9. Kế hoạch theo đợt
 
-### Điều kiện nghiệm thu
+| Đợt    | Nội dung                                                                                                                                      | Điều kiện chuyển đợt                            |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **P0** | Sửa R01 và R02. Hoàn thành G1–G4.                                                                                                             | Hai lỗi đang mở đã đóng, có test tái hiện.      |
+| **P1** | Dòng task inline: dòng nháp, tạo mới, nhúng task có sẵn, hiển thị dữ liệu sống, checkbox, người thực hiện, hạn theo ngày, xử lý quyền và lỗi. | AC01–AC04 đạt trên môi trường test.             |
+| **P2** | Board canvas trong trang: bỏ modal, render inline, kéo chiều cao, giữ nguyên backend.                                                         | AC05–AC06 đạt.                                  |
+| **P3** | Read-only, version warning, PDF/HTML renderer cho hai node.                                                                                   | AC07 đạt; không block nào biến mất khỏi export. |
+| **P4** | Export Markdown có nội dung thay thế đọc được.                                                                                                | Không cam kết import ngược.                     |
+| **P5** | Markdown round-trip đầy đủ (`:::plane-task`, `:::plane-board`) — **chỉ làm nếu thực sự cần import ngược**.                                    | Quyết định riêng trước khi bắt đầu.             |
+| Sau    | Khay mẫu board, vẽ realtime nhiều người, giờ trong hạn + chuông nhắc.                                                                         | Mỗi mục là một đề xuất riêng.                   |
 
-| AC | Tiêu chí |
-|---|---|
-| AC01 | Người dùng chọn/tạo task thật; không thay checklist/mention; không chèn ID lỗi. |
-| AC02 | Task block phản ánh thông tin có quyền truy cập; lỗi tạo/chèn không gây tạo trùng hay xóa task. |
-| AC03 | Board lưu riêng, tải lại/khởi động lại vẫn khôi phục đúng nội dung trong phạm vi hỗ trợ. |
-| AC04 | Binary, HTML và JSON giữ tham chiếu đúng; sanitizer vẫn chặn nội dung nguy hiểm. |
-| AC05 | Page/task/board/preview/asset không vượt quyền, kể cả sau khi quyền bị thu hồi hoặc Page bị khóa. |
-| AC06 | Lưu đồng thời không âm thầm ghi đè; lỗi mạng/đóng modal không báo đã lưu sai. |
-| AC07 | Gỡ block/undo/duplicate/copy/restore đúng D07–D09, không mất hoặc chia sẻ nhầm dữ liệu. |
-| AC08 | Read-only/PDF/HTML/Markdown không âm thầm bỏ block; giới hạn export được thể hiện rõ. |
-| AC09 | Không phá luồng Page cũ hoặc các editor dùng chung; web/live build được; dependency không phát sinh React trùng. |
-| AC10 | Có bằng chứng migration, regression, triển khai thử và rollback giữ dữ liệu; tài liệu khớp code bàn giao. |
+---
 
-### Danh mục test
+## 10. Nghiệm thu và test
 
-**Trạng thái ban đầu của toàn bộ test: NOT RUN.** Danh sách dưới đây là test phải xây/chạy, không phải kết quả đã đạt.
+| AC   | Tiêu chí                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| AC01 | `/task` chèn dòng nháp; gõ tiêu đề + Enter tạo work item thật; bỏ dở không để lại task rác.                                |
+| AC02 | Nhúng task có sẵn chèn đúng ID vào dòng đã nằm sẵn trong tài liệu; **không tái hiện R01**.                                 |
+| AC03 | Dòng hiển thị dữ liệu task sống; đổi tên/trạng thái ở nơi khác thì mở lại trang thấy đúng.                                 |
+| AC04 | Checkbox, người thực hiện, hạn sửa được từ dòng và ghi về task; không đủ quyền thì chỉ đọc, lỗi ghi thì hoàn lại hiển thị. |
+| AC05 | Board vẽ được ngay trong trang, không cần mở modal; kéo chiều cao được và lưu lại.                                         |
+| AC06 | Scene và ảnh khôi phục đúng trong phiên trình duyệt mới; **scene không chứa base64**.                                      |
+| AC07 | Read-only, PDF, HTML không âm thầm bỏ mất block; không lộ tài nguyên không có quyền.                                       |
+| AC08 | Binary, HTML, JSON giữ tham chiếu đúng; sanitizer vẫn chặn nội dung nguy hiểm.                                             |
+| AC09 | Duplicate/undo/restore đúng D11, D12; không mất hoặc chia sẻ nhầm dữ liệu.                                                 |
+| AC10 | Web/live build được; không phát sinh React trùng; có bằng chứng migration và rollback.                                     |
 
-| Test | Kịch bản và kết quả mong đợi | AC |
-|---|---|---|
-| T01 | Page cũ có headings, table, checklist, mentions, image: mở/sửa/lưu/reload không mất nội dung hoặc ý nghĩa. So sánh cấu trúc chuẩn hóa, không yêu cầu bytes Yjs giống hệt. | 01,09 |
-| T02 | Chọn task có sẵn; đổi tên/trạng thái ở nơi khác; block đọc dữ liệu hiện tại; task bị hạn chế có trạng thái an toàn. | 01,02,05 |
-| T03 | Tạo task thành công/thất bại/timeout; API thành công nhưng chèn Page thất bại; retry không tự tạo task lần hai. | 01,02 |
-| T04 | Tìm `task`/`todo`/`checkbox`; work item và checklist dễ phân biệt; shortcut Markdown checklist không đổi. | 01,09 |
-| T05 | Người khác sửa Page trong khi modal mở; vị trí chèn vẫn đúng. Điều hướng sang Page khác/mất quyền thì không chèn muộn vào Page sai. | 01,05,09 |
-| T06 | Task/board node qua editor → binary → JSON/HTML → sanitizer → binary, reload và HTML fallback: ID/type/attrs được giữ. | 04 |
-| T07 | Hai người sửa nội dung Page chứa board, reconnect và khởi động lại apps/live; không mất node, không biến thành realtime canvas ngoài phạm vi. | 04,09 |
-| T08 | Tạo board, vẽ/chữ/đường nối, lưu, đóng/mở trong phiên mới và restart service; scene và ID khôi phục đúng. | 03 |
-| T09 | Hai tab cùng revision; tab A lưu trước, tab B bị conflict; scene A nguyên vẹn và draft B còn để xử lý. | 06 |
-| T10 | User/guest/owner, private Page, lock/archive/delete, project membership và cross-workspace ID; kiểm tra cả scene, task, preview và asset. | 05 |
-| T11 | Mạng lỗi, retry, response đảo thứ tự, đóng modal khi đang lưu, hết phiên đăng nhập; không hiển thị Saved sai hoặc tự ghi đè. | 06 |
-| T12 | Ảnh/preview trong phiên mới và khi URL ký hết hạn; đúng revision/quyền. Nếu chưa hỗ trợ ảnh, thao tác nhập ảnh phải bị chặn rõ ràng. | 03,05,06 |
-| T13 | Delete block, undo, redo, gỡ nhiều reference, tạo board nhưng chưa chèn; không tự xóa task/scene. | 07 |
-| T14 | Duplicate Page clone board và remap ID; chỉnh bản sao không đổi bản gốc. Copy khác Page đúng quy tắc được duyệt. | 07 |
-| T15 | Mở/khôi phục version Page chứa board; hiển thị đúng giới hạn “scene mới nhất”, không giả là snapshot board lịch sử. | 07 |
-| T16 | Read-only/PDF/HTML/Markdown chứa cả task/board: có nội dung hoặc fallback đọc được, không crash/blank silently; không lộ tài nguyên không có quyền. | 05,08 |
-| T17 | Web/live build + smoke SSR/hydration, modal focus/keyboard, editor khác; đo kích thước bundle/tải Page trước-sau; canvas không bị import vào server. | 09 |
-| T18 | Migration trên DB test có dữ liệu cũ; số Page và nội dung không đổi ngoài thao tác đã test; rollout/rollback vẫn đọc được node và giữ board. | 10 |
-| T19 | Payload thiếu revision/sai UUID/sai scene/quá lớn; HTML/script/link nguy hiểm; không tắt sanitizer hoặc nới quyền để test qua. | 04,05,10 |
+**Trạng thái test: NOT RUN**, trừ những dòng đã ghi kết quả ở mục 1.
 
-Khi chạy, ghi thêm: `test file hoặc thao tác`, `lệnh`, `môi trường`, `commit`, `kết quả`, `đường dẫn log/screenshot`. Không thay NOT RUN thành PASS chỉ vì code đã được viết.
+| Test | Kịch bản                                                                                                        | Trạng thái  |
+| ---- | --------------------------------------------------------------------------------------------------------------- | ----------- |
+| T01  | Page cũ có heading, table, checklist, mention, image: mở/sửa/lưu/reload không mất nội dung                      | NOT RUN     |
+| T02  | Tạo task từ dòng nháp: thành công, thất bại, timeout, bỏ dở                                                     | NOT RUN     |
+| T03  | Nhúng task có sẵn ngay sau khi mở modal — tái hiện R01                                                          | NOT RUN     |
+| T04  | Sửa checkbox/người/hạn từ dòng; thu hồi quyền giữa chừng                                                        | NOT RUN     |
+| T05  | Tìm `task`, `todo`, `checkbox`: work item và checklist phân biệt được                                           | ĐẠT (19/09) |
+| T06  | Node qua binary → JSON/HTML → sanitizer → binary, reload                                                        | NOT RUN     |
+| T07  | Board: vẽ, lưu, mở lại phiên mới, restart service                                                               | NOT RUN     |
+| T08  | Board có ảnh: scene **không chứa base64**, ảnh hiện lại đúng — tái hiện R02                                     | NOT RUN     |
+| T09  | Hai tab cùng revision: tab sau nhận `409`, giữ được thay đổi cục bộ                                             | NOT RUN     |
+| T10  | Quyền: guest/member/owner, Page riêng tư, lock/archive, cross-workspace                                         | NOT RUN     |
+| T11  | Duplicate Page có board + ảnh; xoá Page gốc không làm mất ảnh bản sao; PATCH board vừa duplicate vẫn thành công | NOT RUN     |
+| T12  | Version restore có board: hiện đúng cảnh báo "scene mới nhất"                                                   | NOT RUN     |
+| T13  | PDF/HTML/read-only chứa cả task và board                                                                        | NOT RUN     |
+| T14  | Migration trên DB test có dữ liệu cũ; `makemigrations --check`                                                  | NOT RUN     |
+| T15  | Payload sai revision/UUID/scene quá lớn; HTML nguy hiểm                                                         | NOT RUN     |
 
-Trong source đã đọc, package `live` có script `test` dùng Vitest và `check:types`; editor có `check:types`/`build`. [S20][S21] Ví dụ lệnh để đối chiếu sau khi cài môi trường đúng checkout:
+Khi chạy, ghi thêm: lệnh, môi trường, commit, kết quả, đường dẫn log. **Không đổi NOT RUN thành ĐẠT chỉ vì code đã viết xong.**
 
-```sh
-pnpm --filter live test
-pnpm --filter live check:types
-pnpm --filter @plane/editor check:types
-pnpm --filter @plane/editor build
+---
+
+## 11. Quy trình dev bắt buộc (F16, F17)
+
+`@plane/editor` là package đã build. Sửa source trong `packages/editor/src` **không có tác dụng** cho tới khi làm đủ ba bước:
+
+```bash
+docker exec plane-app-web-1 sh -c "cd /workspace && pnpm --filter @plane/editor build"
+docker exec plane-app-web-1 sh -c "rm -rf /workspace/apps/web/node_modules/.vite"
+docker restart plane-app-web-1
 ```
 
-Đây không thay thế test backend/browser. Agent phải xác định runner/lệnh backend và E2E thực tế, bổ sung test còn thiếu và báo giới hạn; không bịa lệnh dựa vào một framework đoán trước.
+Sau khi restart, Vite sẽ bundle lại dependency (mất vài phút và tự reload trang vài lần) trước khi phục vụ được. Nếu bỏ qua bước này và thấy tính năng "không chạy", rất có thể đang chạy bản build cũ chứ không phải lỗi code.
+
+**Cập nhật 19/09 — HMR của `apps/web` cũng không đáng tin trên máy này.** Ban đầu tưởng chỉ `packages/editor` cần build lại, `apps/web` thì Vite tự nhận qua HMR. Thực tế trong phiên sửa `page-issue-embed.tsx`, Vite phục vụ đúng bản cũ nhiều lần liên tiếp dù file trên đĩa (xác nhận cả ở host lẫn trong container qua `docker exec grep`) đã đổi — nghi do mtime của bind-mount trên Docker Desktop/Windows không đủ tin cậy để chokidar phát hiện thay đổi. `touch` không đủ để ép nhận; phải thực sự đổi nội dung, và nếu vẫn không nhận thì `docker restart plane-app-web-1` là cách chắc chắn duy nhất. **Cách xác minh nhanh trước khi kết luận "code chạy sai": `curl -s "http://localhost:13200/<đường-dẫn-module>" | grep "<đoạn-code-vừa-sửa>"` — nếu không thấy, đó là Vite phục vụ bản cũ, không phải lỗi code.**
 
 ---
 
-## 11. Triển khai và rollback
+## 12. Triển khai và rollback
 
-**Trước bật tính năng:** backup database và assets có kiểm chứng khả năng restore; migration thêm mới; triển khai API, shared editor schema, apps/live và web đọc được node mới. Đánh giá phiên client cũ/cache/offline trước khi cho ghi node mới.
+**Trước khi bật:** backup database và assets có kiểm chứng khả năng restore; migration đã chạy trên DB test; API, shared editor schema, `apps/live` và web đều đọc được node mới.
 
-**Bật có kiểm soát:** feature flag chỉ điều khiển tạo/chỉnh mới; tắt flag không được bỏ parser của node đã có. Với nhóm thử nhỏ, có thể dùng cửa sổ bảo trì/reload phiên để tránh client cũ cùng ghi. Không bật nếu vẫn có writer cũ có thể làm rơi node mà chưa có biện pháp bảo vệ.
+**Bật có kiểm soát:** dùng `disabledExtensions`/`flaggedExtensions` (F08) để chỉ bật cho nhóm thử. Tắt flag **không được** bỏ parser của node đã có, nếu không nội dung đã tạo sẽ hỏng.
 
-**Quan sát:** tỷ lệ lỗi Page save, board save/conflict, lỗi sanitizer/converter, payload quá lớn, truy cập bị từ chối, preview mismatch và thời gian tải. Log dùng ID/revision/mã lỗi; không ghi raw scene, token hoặc nội dung nhạy cảm không cần thiết.
+**Quan sát:** tỷ lệ lỗi lưu Page, lỗi lưu board, xung đột `409`, payload quá lớn, truy cập bị từ chối. Log dùng ID/revision/mã lỗi; **không ghi raw scene, token hay nội dung nhạy cảm**.
 
-**Rollback ứng dụng:** tắt tạo mới, giữ đọc/parse node và bảng/scene/assets. Quay về bản tương thích định dạng mới, không mặc định quay về bất kỳ bản trước tính năng. Dừng ghi khi phát hiện mất/biến dạng nội dung; phục hồi từ backup phải cân nhắc các thay đổi phát sinh sau backup.
-
-**Rollback DB:** migration thêm bảng có thể đảo về mặt kỹ thuật nhưng DROP TABLE sẽ xóa scene. Không coi down migration là rollback an toàn sau khi người dùng đã tạo board. Không tự thực hiện thao tác phá hủy dữ liệu; cần quyết định, backup/export và kế hoạch phục hồi riêng.
+**Rollback:** tắt tạo mới, giữ đọc/parse node và dữ liệu board. Migration thêm bảng đảo được về mặt kỹ thuật nhưng DROP TABLE sẽ xoá sạch scene — không coi down migration là rollback an toàn sau khi người dùng đã tạo board.
 
 ---
 
-## 12. Quy tắc dùng tài liệu khi implementation
+## 13. Nhật ký quyết định
 
-1. Đọc lại mục liên quan trước mỗi nhóm sửa; xác nhận HEAD và các thay đổi của người khác. Không reset hoặc sửa ngoài scope chỉ để làm sạch test.
-2. Mỗi nhóm code phải map được tới `D/TASK/BOARD → IMP → AC → T`. Ghi file thực sửa và kết quả kiểm tra trong bảng bàn giao.
-3. Phát hiện dependency mới trong phạm vi đã duyệt: bổ sung evidence/phạm vi trước khi sửa. Phát hiện thay đổi nghiệp vụ, API/DB contract, quyền, vòng đời hoặc mất dữ liệu: dừng phần đó và xin duyệt; tự sửa spec không phải tự cấp phép.
-4. Source trái tài liệu: ghi khác biệt, không sửa code hiện có để ép cho đúng một giả định cũ. Giữ tách biệt “đã thiết kế”, “đã thực hiện” và “đã kiểm thử”.
-5. Không tự deploy production, chạy migration trên dữ liệu thật, xóa board/task hoặc ghi secret vào tài liệu.
-6. Cuối việc: review diff, cập nhật trạng thái thực tế, liệt kê test chưa chạy/lỗi có sẵn và phần chưa đạt. Không báo DONE khi AC chưa có bằng chứng.
+| Ngày  | Nội dung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Trạng thái                                                                                        |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 18/09 | Bản 0.1: phân tích tĩnh, thiết kế task theo mô hình thẻ nhúng                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Thay thế                                                                                          |
+| 19/09 | Bản 0.2: duyệt D10–D13 (board độc lập khi duplicate, chặn copy sang Page khác, version hiển thị scene mới nhất, cho phép ảnh)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Còn hiệu lực                                                                                      |
+| 19/09 | Chạy thử trên dev server thật: phát hiện F16/F17/F18, sửa F18, tái hiện R01 và R02                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Đã ghi vào mục 1, 7                                                                               |
+| 19/09 | Bản 0.3: đổi task sang **dòng inline, node chỉ lưu ID**; board sang **canvas trong trang**; bỏ giờ hạn và chuông nhắc khỏi v1; Markdown chia đợt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Đã duyệt                                                                                          |
+| 19/09 | Bổ sung D09a: ghi lại tường minh quyết định dùng `@excalidraw/excalidraw` làm thư viện canvas (trước đó chỉ nhắc rải rác ở BOARD-01/R02/G2, chưa thành một dòng quyết định riêng)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Đã duyệt                                                                                          |
+| 19/09 | Research trước khi code: đóng gate G1, G4 (dùng `MemberDropdown`, `DateDropdown`, `groupedProjectStates`, pattern store-backed của `@mention`), thêm G5 và đóng luôn (Excalidraw `serializeAsJSON(...,"database")` cho R02). R01 có cách sửa cụ thể dựa trên pattern `@mention` sẵn có.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Đã duyệt                                                                                          |
+| 19/09 | Bổ sung D14–D17: kiến trúc nhúng dùng chung cho task/board/calendar sau này (hai họ hành vi, một điểm nối `embed` chuẩn hoá, checklist 8 bước cho loại nhúng mới, khung hiển thị `EntityReferenceRow` dùng chung). Siết lại D03/TASK-05: dòng task bắt buộc hiện trạng thái thật (`StateIcon`), người thực hiện, hạn có cảnh báo quá hạn — không chỉ tiêu đề.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Đã duyệt                                                                                          |
+| 19/09 | Code P0: viết lại `/task` theo D05 (chèn node nháp trước, không giữ range) — sửa R01. Viết lại dòng task hiển thị đầy đủ (checkbox, `StateDropdown`, `MemberDropdown`, `DateDropdown`, sửa tiêu đề tại chỗ) tái dùng đúng component đang có trong app. Sửa `sceneForStorage` dùng `serializeAsJSON(...,"database")` — sửa R02. Xoá `page-task-embed-picker.tsx` (không còn cần). Type-check `@plane/editor` và `web` đều sạch.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Đã làm, đã build lại `@plane/editor`                                                              |
+| 19/09 | Test trên dev server thật: xác nhận `/task` chèn node nháp đúng, modal tìm task và tạo task mới hoạt động, dòng task đã lưu hiển thị đúng checkbox/trạng thái/người/hạn. Phát hiện R08 (mới): ô nhập của dòng nháp không nhận focus tin cậy ngay sau khi chọn "Work item" — đã thử 2 cách sửa (rAF, setTimeout so le) đều chưa thắng ổn định. Chưa test được `/board` (canvas inline, kéo chiều cao — thuộc P2, chưa làm trong phiên này).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | R01, R02 đã sửa; R08 đang mở; P2 (board inline) chưa bắt đầu                                      |
+| 19/09 | Người dùng phản hồi trực tiếp trên UI thật (screenshot + feedback bằng chữ): R08 chặn dùng, icon "Work item" dễ nhầm "To-do list", dòng đã resolve quá to. Người dùng tự đề xuất mô hình checklist-tự-nâng-cấp dựa trên Page thật của họ; chốt qua `AskUserQuestion`: nâng cấp tự động khi gõ `@mention`, không xác nhận thủ công. Ghi thành D18 (mục 2b), thay thế D02–D08/TASK-01–09 của bản 0.3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | D18 đã duyệt                                                                                      |
+| 19/09 | Code D18: `TaskItemEnhanced` (`packages/editor/src/core/extensions/task-item-enhanced/`) mở rộng `taskItem` bằng `TaskItem.extend()`, thêm attr `entity_identifier`, NodeView React phát hiện `mention`(`user_mention`) trong nội dung → gọi `onAutoCreate` → lưu id vào attr; checkbox patch `state_id`, sửa text debounce patch `name`. Đấu dây qua `IEditorPropsExtended.taskChecklist` (`ce/types/editor-extended.ts`) và registry `document-extensions.tsx` (cờ `task-checklist` trong `TExtensions`). Host (`apps/web`): viết lại `use-extended-editor-extensions.tsx` (bỏ `embed.issue`, bỏ lệnh slash "Work item", thêm `taskChecklist` với `onAutoCreate`/`onToggle`/`onTitleChange`/`metaCallback`), file mới `task-item-meta.tsx` (trailer gọn: `MemberDropdown`, `DateDropdown`, link mở, tái dùng đúng component đang có trong app). Xoá hẳn `page-issue-embed.tsx` và `page-task-embed-picker.tsx` (không còn call site). `pnpm --filter @plane/editor build` sạch, `pnpm --filter web check:types` sạch. | Code xong, build + type-check sạch                                                                |
+| 19/09 | Live test trên `localhost:13200` (sau khi build lại, xoá cache Vite, restart `plane-app-web-1`): gõ "To-do list" giữ nguyên checklist cục bộ, không gọi API, gõ liên tục không rớt chữ (**R08 hết hiệu lực — xác nhận trực tiếp**); gõ `@` trong item hiện picker user đúng vị trí, chọn xong tự tạo work item thật (`POST .../issues/` 201, xác nhận qua network + đọc lại bằng API: `assignee_ids` đúng user, `name` đúng text đã gõ, không gồm phần hiển thị mention); tick checkbox patch đúng `state_id` sang state nhóm `completed` ("Done", xác nhận qua `GET .../states/`); sửa text sau khi đã resolve, debounce patch `name` đúng nội dung mới; trailer (avatar/hạn/link) hiện gọn cùng dòng ngay sau text. Kiểm tra Page test cũ (`.../pages/6990bc64-deea-42ee-9062-54cf90c9f240`) không có nội dung `issue-embed-component` cũ nên chưa tái hiện được R09.                                                                                                                                                 | D18 đã verify sống đầy đủ theo đúng luồng người dùng mô tả; R09 vẫn mở (chưa quét toàn workspace) |
+| 19/09 | Người dùng gửi ảnh chụp item đã promote với trailer bị bể xuống dòng 2, phản hồi: cần trên 1 dòng, cần start date tách biệt due date (mỗi cái optional, hiển thị rõ cái nào là cái nào). Ghi thành D18.1 (mục 2b). Code: `TaskItemView` đổi sang layout flex một hàng, `NodeViewContent` cắt `truncate` thay vì wrap, trailer `shrink-0`; `TaskItemMeta` thêm `DateDropdown` cho `start_date` (icon `CalendarClock`, `placeholder`/`showTooltip` riêng biệt với due date). `pnpm --filter @plane/editor build` và `pnpm --filter web check:types` đều sạch.                                                                                                                                                                                                                                                                                                                                                                                                                                                             | D18.1 đã duyệt, code xong, build + type-check sạch                                                |
+| 19/09 | Live test D18.1 trên `localhost:13200` (sau khi build lại, xoá cache Vite, restart `plane-app-web-1`, dev server mất ~4 phút để tối ưu lại dependency sau restart trước khi trang tải được): xác nhận trailer nằm đúng một dòng không bể trên item "đi chơi @quoctdv.hn"; mở picker start date, chọn 07/09/2026 → PATCH `start_date` 204, đọc lại qua `fetch` trực tiếp API xác nhận `start_date: "2026-09-07"` và `target_date` giữ nguyên `"2026-09-17"` không bị ghi đè; hai pill hiện cạnh nhau với icon khác nhau (`CalendarClock` cho start, `CalendarDays` cho due), không còn xuống dòng.                                                                                                                                                                                                                                                                                                                                                                                                                       | D18.1 đã verify sống trên đúng item người dùng phản hồi                                           |
+| 19/09 | Người dùng phản hồi: không được để xoá chữ kéo theo xoá task, cần nút xoá thật có xác nhận, cần state ở đầu dòng và gạch ngang khi hoàn thành. Ghi thành D18.2 (mục 2b). State-ở-đầu-dòng và gạch-ngang-khi-hoàn-thành hoá ra đã có sẵn từ D18/D18.1, không cần sửa. Code phần còn lại: thêm `onDeleted` vào `metaCallback` (bind `deleteNode()`), thêm nút `Trash2` + `AlertModalCore` + `IssueService.deleteIssue` vào `task-item-meta.tsx`. Trong lúc live-test phát hiện và sửa luôn 2 bug đồng bộ chặn test (không thuộc yêu cầu gốc): `TaskItemState`/`TaskItemMeta` tự fetch bản sao issue riêng nên không thấy patch `state_id` từ checkbox — sửa bằng `refetch()` theo dõi prop `checked`; refetch ngay bị race với patch fire-and-forget của checkbox — sửa bằng `setTimeout(refetch, 600)` có cleanup. `pnpm --filter @plane/editor build` và `pnpm --filter web check:types` đều sạch.                                                                                                                      | D18.2 đã duyệt, code xong, build + type-check sạch                                                |
+| 19/09 | Live test D18.2 trên `localhost:13200`: tick/bỏ tick checkbox → `StateDropdown` tự đổi đúng theo (Done/Todo), xác nhận qua `fetch` trực tiếp API cả hai chiều — 2 bug đồng bộ đã hết hiệu lực. Xoá hết chữ trong dòng checklist đã promote (issue `36b6a449-62e3-4a9d-b40e-d9ef3ca00642`) bằng Backspace/Delete thủ công: node biến mất khỏi trang nhưng `GET` work item vẫn trả 200 — **đúng yêu cầu cốt lõi, đã verify trực tiếp chứ không suy luận**. Tạo item mới, bấm nút xoá (`Trash2`) → `AlertModalCore` hiện đúng cảnh báo → xác nhận: dòng biến mất, `GET` work item trả 404 — xoá thật đã hoạt động đúng. Gặp lại banner "View only" môi trường (không liên quan code) giữa chừng, dùng tab mới để né, đã ghi vào mục 2b.                                                                                                                                                                                                                                                                                    | D18.2 đã verify sống đầy đủ cả 2 nhánh (xoá chữ giữ task / nút xoá xoá thật)                      |
 
-### Nhật ký phát hiện khi code
+### Bảng bàn giao
 
-| Ngày / commit | Phát hiện và bằng chứng | Ảnh hưởng ID | Quyết định / người duyệt | Trạng thái |
-|---|---|---|---|---|
-| 18/09/2026 / baseline | Lập bản phân tích tĩnh ban đầu; chưa code, chưa chạy test. | Toàn bộ | Chờ review | DRAFT |
-
-### Bảng bàn giao đối chiếu
-
-| Yêu cầu / IMP | File thực tế / commit | Test và bằng chứng | Chênh lệch với thiết kế | Kết luận |
-|---|---|---|---|---|
-| Chưa triển khai | — | NOT RUN | — | Chưa nghiệm thu |
-
----
-
-## 13. Nguồn kiểm chứng
-
-Các liên kết source dưới đây cố định commit để tránh tài liệu âm thầm thay đổi theo nhánh. Version/runtime triển khai vẫn phải xác minh tại G0. Nguồn thư viện là tài liệu công khai đã xem ngày 18/09/2026; đối chiếu API với package pin khi code.
-
-| Nguồn | Nội dung |
-|---|---|
-| [S01] | Commit baseline; nhánh preview là nhánh được truy vấn khi review |
-| [S02] | Page, ProjectPage và PageVersion |
-| [S03] | PageEditorBody: điểm nối Page với collaborative editor |
-| [S04] | WorkItemEmbedExtensionConfig: schema và HTML tag |
-| [S05] | WorkItemEmbedExtension: React Node View và widget callback |
-| [S06] | Schema extensions không phụ thuộc UI props |
-| [S07] | Chuyển đổi Yjs, ProseMirror, HTML và JSON |
-| [S08] | Hocuspocus fetchDocument/storeDocument |
-| [S09] | PageCoreService: đọc/ghi description, resolve asset |
-| [S10] | Page views: description, duplicate và vòng đời Page |
-| [S11] | Page serializers và validation cập nhật nội dung |
-| [S12] | nh3 sanitizer, custom tags/attributes và giới hạn nội dung |
-| [S13] | Slash menu, additional options và từ khóa checklist |
-| [S14] | IssueService: tạo, đọc và lấy nhóm work items |
-| [S15] | Hook useExtendedEditorProps trong core |
-| [S16] | DocumentEditorAdditionalExtensions registry |
-| [S17] | Page transaction component map và PageLog |
-| [S18] | PDF node renderers và fallback node chưa có renderer |
-| [S19] | Dependency catalog, overrides và khai báo phiên bản |
-| [S20] | Editor manifest, exports và build/check scripts |
-| [S21] | Live manifest và Vitest/check scripts |
-| [E01] | Excalidraw installation, dimensions và self-hosting fonts |
-| [E02] | Excalidraw props: initialData, onChange, view mode và keyboard |
-| [E03] | Excalidraw serialize/restore utilities; kiểm tra theo bản pin |
-| [E04] | Tiptap React Node Views; áp dụng API phù hợp Tiptap 2 trong repo |
-| [E05] | Giấy phép công bố của kho Excalidraw |
-
-[S01]: https://github.com/cuoicungtui/plane/commit/174243b565e483e24f057cf9add9fe59a9f818c3 "Commit baseline; nhánh preview là nhánh được truy vấn khi review"
-[S02]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/api/plane/db/models/page.py "Page, ProjectPage và PageVersion"
-[S03]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/web/core/components/pages/editor/editor-body.tsx "PageEditorBody: điểm nối Page với collaborative editor"
-[S04]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/extensions/work-item-embed/extension-config.ts "WorkItemEmbedExtensionConfig: schema và HTML tag"
-[S05]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/extensions/work-item-embed/extension.tsx "WorkItemEmbedExtension: React Node View và widget callback"
-[S06]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/extensions/core-without-props.ts "Schema extensions không phụ thuộc UI props"
-[S07]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/helpers/yjs-utils.ts "Chuyển đổi Yjs, ProseMirror, HTML và JSON"
-[S08]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/live/src/extensions/database.ts "Hocuspocus fetchDocument/storeDocument"
-[S09]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/live/src/services/page/core.service.ts "PageCoreService: đọc/ghi description, resolve asset"
-[S10]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/api/plane/app/views/page/base.py "Page views: description, duplicate và vòng đời Page"
-[S11]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/api/plane/app/serializers/page.py "Page serializers và validation cập nhật nội dung"
-[S12]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/api/plane/utils/content_validator.py "nh3 sanitizer, custom tags/attributes và giới hạn nội dung"
-[S13]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/extensions/slash-commands/command-items-list.tsx "Slash menu, additional options và từ khóa checklist"
-[S14]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/web/core/services/issue/issue.service.ts "IssueService: tạo, đọc và lấy nhóm work items"
-[S15]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/web/core/hooks/pages/use-extended-editor-extensions.ts "Hook useExtendedEditorProps trong core"
-[S16]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/src/extensions/document-extensions.tsx "DocumentEditorAdditionalExtensions registry"
-[S17]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/api/plane/bgtasks/page_transaction_task.py "Page transaction component map và PageLog"
-[S18]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/live/src/lib/pdf/node-renderers.tsx "PDF node renderers và fallback node chưa có renderer"
-[S19]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/pnpm-workspace.yaml "Dependency catalog, overrides và khai báo phiên bản"
-[S20]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/packages/editor/package.json "Editor manifest, exports và build/check scripts"
-[S21]: https://github.com/cuoicungtui/plane/blob/174243b565e483e24f057cf9add9fe59a9f818c3/apps/live/package.json "Live manifest và Vitest/check scripts"
-[E01]: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation "Excalidraw installation, dimensions và self-hosting fonts"
-[E02]: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/props/ "Excalidraw props: initialData, onChange, view mode và keyboard"
-[E03]: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/utils "Excalidraw serialize/restore utilities; kiểm tra theo bản pin"
-[E04]: https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react "Tiptap React Node Views; áp dụng API phù hợp Tiptap 2 trong repo"
-[E05]: https://github.com/excalidraw/excalidraw/blob/master/LICENSE "Giấy phép công bố của kho Excalidraw"
-
----
-
-## Cập nhật checkout và trạng thái triển khai — 19/09/2026
-
-- Checkout triển khai: `main`, HEAD `bb37d5a61225fc08effa63bb1dd956692b8f15e8`, remote `origin` là `https://github.com/cuoicungtui/plane.git`.
-- F15 đã xác minh trên source hiện tại: `apps/web/core/store/pages/project-page.ts`, constructor `ProjectPage`, lấy `page.project_ids?.[0]` cho toàn bộ Page API. Whiteboard v1 dùng cùng route project-scoped; Page global không có project hiện chưa có route hoạt động trong frontend hiện hữu.
-- F09 đã xác minh và đã sửa: sanitizer thiếu `issue-embed-component`; nay allowlist giữ task embed và `whiteboard-embed-component` cùng các attrs bền vững.
-- Đã triển khai một phần P1/P3/P5: schema headless cho board, `PageWhiteboard` + migration `0123`, Page-scoped API, idempotent creation key, optimistic revision, kiểm tra quyền qua `ProjectPagePermission`, kiểm tra asset ID Page đã upload, và clone/remap board khi duplicate Page.
-- Chưa hoàn tất P2/P4/P6: picker/create task, modal Excalidraw, adapter asset/preview, copy/paste block guard, export/read-only renderer và end-to-end UI. Chưa bật UI tạo board.
-- Xác minh: `python -m compileall` và `git diff --check` đã qua. Test Docker cô lập đã chạy với file `test_page_whiteboard_app.py`; log quan sát được hai case đầu PASS. Kết quả tổng đầy đủ cần chạy lại sau khi môi trường test ổn định. Không migration hay thay đổi Docker/volume dev.
+| Yêu cầu                           | File/commit thật                                  | Test và bằng chứng                                            | Kết luận        |
+| --------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- | --------------- |
+| F18 — editor không nhận props mới | `packages/editor/src/core/hooks/use-editor.ts:99` | Xác minh trên UI thật: `/task`, `/board` hiện đúng trong menu | Đã sửa          |
+| R01 — chèn task không hoạt động   | `page-task-embed-picker.tsx:31`                   | Tái hiện được trên dev server                                 | Đang mở         |
+| R02 — base64 vào scene            | `page-whiteboard-embed.tsx:66`                    | Phát hiện qua đọc code, chưa tái hiện runtime                 | Đang mở         |
+| P1–P5                             | —                                                 | NOT RUN                                                       | Chưa triển khai |

@@ -15,6 +15,7 @@ export * from "./slash-commands";
 export * from "./table";
 export * from "./typography";
 export * from "./work-item-embed";
+export * from "./task-item-enhanced";
 export * from "./whiteboard";
 export * from "./core-without-props";
 export * from "./custom-color";

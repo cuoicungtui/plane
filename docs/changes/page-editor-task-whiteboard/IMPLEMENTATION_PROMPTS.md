@@ -1,126 +1,116 @@
 # Prompt dùng với coding agent — Plane Page Editor
 
-Đặt `CHANGE_IMPACT.md` trong repo tại:
+Tài liệu đối chiếu: `docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md` (bản 0.3).
+
+Bản 0.3 **thay thế** bản 0.2 ở phần task và phần hiển thị board. Mọi prompt dưới đây đều bám bản 0.3.
+
+---
+
+## 0. Trước khi làm bất cứ việc gì
 
 ```text
-docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md
+Đọc docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md bản 0.3.
+
+Trước khi sửa bất cứ dòng code nào:
+1. Chạy `git branch --show-current`, `git log -1`, `git status`. Xác nhận đang ở đúng
+   nhánh sẽ code thật. Nếu có thay đổi chưa commit, DỪNG lại và báo cho tôi —
+   không tự stash/reset/commit để "làm sạch".
+2. Đọc mục 11 (Quy trình dev bắt buộc). Nếu bạn sửa bất cứ file nào trong
+   packages/editor/src mà không build lại package + xoá cache Vite + restart
+   container, thay đổi của bạn SẼ KHÔNG có tác dụng và bạn sẽ đi tìm nhầm lỗi.
+   Đây là chuyện đã xảy ra thật, mất nhiều giờ.
+3. Đọc mục 7 (rủi ro đang mở). R01 và R02 là hai lỗi đã xác nhận, phải sửa ở P0
+   trước khi làm tính năng mới.
+
+Báo lại: branch/HEAD, working-tree status, và xác nhận bạn đã hiểu mục 11.
 ```
 
-## 0. Chuẩn bị trước khi giao (đang ở nhánh `main`)
+## 1. Hoàn thành P0 — đóng hai lỗi đang mở và bốn gate
 
 ```text
-Tôi sẽ giao cho bạn 2 file để bắt đầu công việc:
-- CHANGE_IMPACT.md
-- IMPLEMENTATION_PROMPTS.md
+Làm đúng bước P0 trong mục 9 của CHANGE_IMPACT.md. Chưa làm tính năng mới.
 
-Đích cuối cùng trong repo:
-docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md
-docs/changes/page-editor-task-whiteboard/IMPLEMENTATION_PROMPTS.md
+Sửa hai lỗi:
+- R01 (page-task-embed-picker.tsx:31): code giữ {from,to} bắt lúc gõ /task rồi
+  dùng lại sau khi modal đóng, nên chọn task xong không chèn được gì. Sửa theo
+  D05: luôn chèn node vào tài liệu TRƯỚC, rồi mới điền ID vào. Không vá bằng
+  cách tính lại offset.
+- R02 (page-whiteboard-embed.tsx:66): scene gửi lên server đang kèm dataURL
+  base64 của từng ảnh. Lọc bỏ trước khi gửi; load() đã tự dựng lại ảnh từ asset
+  backend nên server không cần giữ base64.
 
-Bây giờ CHỈ làm bước chuẩn bị. CHƯA đối chiếu kỹ thuật, CHƯA code.
+Hoàn thành G1–G4 trong mục 8 bằng source thật:
+- G1: tìm component/hook có sẵn cho member picker, date picker, và cách lấy
+  trạng thái thuộc nhóm completed của project. Ưu tiên tái sử dụng.
+- G2: dựng một bản thử tối thiểu nhúng Excalidraw inline trong ProseMirror node
+  view, kiểm tra phím tắt/selection/cuộn/kéo thả không xung đột. Phải chạy thật,
+  không suy luận.
+- G3: truy vết read-only editor, version restore, copy/paste, export PDF/HTML
+  cho issue-embed-component và whiteboard-embed-component.
+- G4: xác định app đã có sự kiện/store cập nhật work item chưa, hay phải dùng
+  refetch khi focus.
 
-Hãy:
-1. Xác nhận remote origin, branch hiện tại và HEAD commit. Tôi báo trước là
-   đang ở nhánh `main` — tự kiểm tra lại bằng `git branch --show-current` và
-   `git log -1`, không tin lời tôi nói mà không xác minh.
-2. Chạy `git status`. Nếu có working-tree changes chưa commit, DỪNG lại và
-   báo cho tôi — không tự stash/commit/reset để "làm sạch" trước khi bắt đầu.
-3. CHANGE_IMPACT.md được viết dựa trên nhánh `preview`, commit
-   `174243b565e483e24f057cf9add9fe59a9f818c3` của repo `cuoicungtui/plane`.
-   Nhánh `main` hiện tại có thể đã tiến xa hơn mốc đó. Với mỗi file được
-   trích dẫn ở mục 13 của tài liệu (S02–S21, đường dẫn kèm sẵn), hãy đọc
-   bản trên `main` (HEAD hiện tại) và so với nội dung/trích dẫn trong tài
-   liệu. Với mỗi phát hiện F01–F15 ở mục 1, ghi rõ một trong ba: "vẫn đúng
-   trên main", "khác trên main (nêu khác gì, kèm đường dẫn/dòng)", hoặc
-   "chưa kiểm tra được — vì sao". Không suy đoán nếu chưa đọc trực tiếp.
-4. Tạo thư mục và đặt 2 file vào đúng đường dẫn nêu trên. Chưa commit — để
-   tôi xem lại diff trước.
-5. Các quyết định D04, D08, D09, BOARD-07 trong tài liệu đã được tôi duyệt
-   (có ghi người duyệt + ngày trong file) — coi là chốt, KHÔNG phải phần
-   cần bạn review hay đề xuất lựa chọn khác ở bước này hay bất kỳ bước sau.
+Với mỗi mục, ghi tên file và function cụ thể. Không ghi "không có" chỉ vì chưa
+tìm thấy.
 
-Báo lại cho tôi: branch/HEAD/remote, working-tree status, kết quả so sánh
-F01–F15 với `main`, và xác nhận vị trí 2 file đã được đặt. Chưa chạy G0–G4
-đầy đủ hay code trong lượt này — việc đó làm ở Prompt 1 kế tiếp, chỉ chạy
-sau khi tôi xem qua kết quả bước này.
+Trả về: hai lỗi đã sửa kèm test tái hiện (T03 cho R01, T08 cho R02), kết quả
+G1–G4, và những chỗ source khác với tài liệu.
 ```
 
-## 1. Đối chiếu tại checkout trước khi code
+## 2. Triển khai P1 — dòng task inline
 
 ```text
-Tôi muốn thêm /task và /board vào Plane Page theo tài liệu:
-docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md
+Làm bước P1 trong mục 9. Bám mục 3.1 (TASK-01 đến TASK-09).
 
-Repo: https://github.com/cuoicungtui/plane
+Những điều KHÔNG được làm khác đi:
+- Giữ nguyên tên node issue-embed-component và tên các attrs hiện có (F04).
+  Trang cũ đã có dữ liệu dùng node này; đổi tên là phá nội dung cũ.
+- Tài liệu chỉ lưu ID. Không lưu tiêu đề, trạng thái, người thực hiện hay hạn
+  vào trong doc dưới bất kỳ hình thức nào (D02).
+- Mọi thay đổi task đi từ trình duyệt qua IssueService nội bộ, bằng quyền của
+  người đang thao tác (D04, F12). Không dùng apps/live để sửa work item.
+  Không dùng REST API công khai work-items.
+- Luôn chèn node trước, điền ID sau (D05). Không giữ offset qua request async.
+- Bỏ dở dòng nháp thì xoá node, không để lại task rác (TASK-02).
+- Hạn chỉ theo ngày. Không thêm giờ, không làm chuông nhắc (D07).
 
-Lúc này chỉ đọc source, đối chiếu và cập nhật tài liệu; chưa viết code tính năng,
-chưa cài/nâng dependency, chạy migration hoặc deploy.
+Với mỗi nhóm sửa: ghi rõ mã D/TASK/IMP/AC/T liên quan, đối chiếu file thật
+trước khi sửa, thay đổi nhỏ, chạy kiểm tra, ghi kết quả.
 
-Hãy:
-- Đọc toàn bộ tài liệu và ghi lại branch, HEAD, remote, working-tree changes.
-  Không reset hoặc ghi đè thay đổi đang có. Xác nhận đây có đúng là nhánh
-  mà tính năng sẽ được code thật hay không — không giả định "main" hay
-  "preview" là đúng chỉ vì tài liệu nhắc tới; tự kiểm tra bằng `git branch`,
-  `git log` và so với ghi chú G0 trong tài liệu.
-- Hoàn thành G0–G4 bằng source thực tế. Đừng dừng ở README hoặc chỉ đọc
-  những file đã nêu; tìm call sites và dependency có liên quan.
-- G3 phải trả lời được F15: Page có `is_global=True` hoặc thuộc nhiều
-  project thì frontend hiện tại gọi API bằng `project_id` nào? Ghi rõ
-  file/function tìm được; đây là điều kiện để chốt route API whiteboard.
-- D08 và BOARD-07 trong tài liệu đã ĐÃ DUYỆT (không phải điều cần review lại):
-  duplicate Page tạo board độc lập; copy 1 block board sang Page khác phải
-  bị chặn với thông báo rõ; whiteboard v1 cho phép ảnh/upload qua asset
-  backend (MinIO) sẵn có. Đừng đề xuất lại các lựa chọn khác cho 2 mục này.
-- Xác minh luồng Page/Yjs → apps/live → API → database, extension work-item
-  hiện hữu, sanitizer, quyền, assets, duplicate, restore, copy/paste,
-  read-only và export.
-- Nếu source khác tài liệu, ghi sự khác biệt và evidence file + function;
-  cập nhật HIỆN TRẠNG, không tự sửa code để khớp giả định cũ.
-- Bổ sung tên model, route, file mới dự kiến, migration dependency, test
-  runner và các vị trí IMP còn chưa xác định. Tái sử dụng trước khi tạo mới.
-- Tách điều đã xác nhận, thiết kế đề xuất và điều cần kiểm tra runtime.
-  Không suy đoán dữ liệu production từ model trong repo.
-
-Trả về bản CHANGE_IMPACT.md đã cập nhật và một bản tóm tắt:
-đã xác nhận gì, khác biệt gì, quyết định nào cần tôi duyệt trước khi code.
-Chưa triển khai tính năng trong lượt này.
+Không đánh dấu test ĐẠT khi chưa chạy. Không tự đổi contract API/DB/quyền/
+vòng đời dữ liệu — những thay đổi đó cần duyệt riêng.
 ```
 
-## 2. Triển khai sau khi đã duyệt bản tài liệu cập nhật
+## 3. Triển khai P2 — board canvas trong trang
 
 ```text
-Tôi đồng ý triển khai phương án v1 trong bản CHANGE_IMPACT.md đã duyệt tại:
-docs/changes/page-editor-task-whiteboard/CHANGE_IMPACT.md
+Làm bước P2 trong mục 9. Bám mục 3.2 (BOARD-01 đến BOARD-09).
 
-Trước khi code, xác nhận tài liệu đang dùng và kiểm tra HEAD/diff có thay đổi
-so với lượt review không. Nếu có khác biệt ảnh hưởng thiết kế, cập nhật phân tích trước; không coi việc tôi duyệt bản cũ là duyệt cả thay đổi mới.
+Backend board đã xong và đã đạt, GIỮ NGUYÊN: model, API, revision, idempotent
+create, kiểm tra quyền, duplicate + copy asset + remap. Đừng viết lại.
 
-Nếu mục G2 hoặc câu hỏi F15 trong tài liệu còn để trống hoặc CHƯA XÁC MINH,
-dừng lại và làm rõ trước (quay lại như prompt đối chiếu ở bước 1), không tự
-chuyển sang code khi bằng chứng chưa đủ.
+Việc của đợt này chỉ ở phía hiển thị:
+- Bỏ modal. Canvas render ngay trong luồng nội dung trang (D09).
+- Thêm attr height, kéo được, lưu vào node (BOARD-04).
+- Chế độ chỉ đọc hiển thị canvas không sửa được.
+- Cách ly thao tác canvas khỏi phím tắt và selection của ProseMirror (G2).
+- Cấu hình headless dùng cho apps/live tuyệt đối không import Excalidraw hay
+  API trình duyệt (BOARD-01).
 
-D08 và BOARD-07 đã được tôi duyệt cụ thể — coi là chốt, không đề xuất lại:
-- Duplicate Page → board bản sao độc lập, không dùng chung với gốc.
-- Copy 1 block whiteboard sang Page khác → chặn, báo lỗi rõ ràng.
-- Whiteboard v1 → cho phép ảnh/upload qua asset backend (MinIO) hiện có,
-  nhưng vẫn phải chạy và đạt T12 trước khi coi là hoàn thành.
+Chưa làm: vẽ realtime nhiều người, khay mẫu kéo thả. Hai thứ này ngoài v1.
+```
 
-Triển khai lần lượt theo P1–P6, không mở rộng phạm vi.
-Giữ @plane/editor và pipeline Page hiện có; ưu tiên tái sử dụng work-item embed.
-Không đưa scene whiteboard vào nội dung Page hoặc import canvas vào server.
+## 4. Khi bàn giao
 
-Với mỗi nhóm sửa:
-1. Ghi rõ các mã D/TASK/BOARD, IMP, AC và T liên quan.
-2. Đối chiếu file/call site thực tế, cập nhật phát hiện mới trước khi sửa.
-3. Thực hiện thay đổi nhỏ, chạy kiểm tra phù hợp, ghi kết quả và bằng chứng.
-4. Không tự thay API/DB contract, quyền, vòng đời dữ liệu hoặc scope đã duyệt.
-   Những thay đổi đó cần duyệt riêng; tự sửa spec không phải tự cấp phép.
+```text
+Cập nhật bảng bàn giao cuối CHANGE_IMPACT.md:
+yêu cầu → file/commit thật đã sửa → test và bằng chứng → khác biệt với thiết kế
+→ kết luận.
 
-Không đánh dấu PASS khi chưa chạy test. Ghi rõ test chưa chạy và lý do.
-Không xóa/reset thay đổi của người khác. Không tự deploy production,
-chạy migration trên dữ liệu thật hoặc xóa dữ liệu để làm test qua.
+Liệt kê rõ: test chưa chạy và lý do, lỗi có sẵn không thuộc phạm vi, rủi ro còn
+lại. Không báo DONE khi AC chưa có bằng chứng.
 
-Khi bàn giao, cập nhật bảng đối chiếu trong CHANGE_IMPACT.md:
-yêu cầu → file/commit thực sửa → test/bằng chứng → khác biệt → kết luận.
-Liệt kê rõ phần chưa đạt, test chưa chạy và rủi ro còn lại.
+Nhắc lại: nếu bạn sửa packages/editor/src, phải build lại + xoá cache Vite +
+restart container trước khi kết luận bất cứ điều gì về hành vi chạy thật
+(mục 11).
 ```

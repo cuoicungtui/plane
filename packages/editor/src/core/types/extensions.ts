@@ -4,4 +4,12 @@
  * See the LICENSE file for details.
  */
 
-export type TExtensions = "ai" | "collaboration-cursor" | "issue-embed" | "whiteboard" | "slash-commands" | "enter-key" | "image";
+export type TExtensions =
+  | "ai"
+  | "collaboration-cursor"
+  | "issue-embed"
+  | "whiteboard"
+  | "task-checklist"
+  | "slash-commands"
+  | "enter-key"
+  | "image";

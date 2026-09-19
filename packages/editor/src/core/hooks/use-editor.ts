@@ -88,15 +88,19 @@ export const useEditor = (props: TEditorHookProps) => {
       onTransaction: () => {
         onTransaction?.();
       },
-      onUpdate: ({ editor, transaction }) => {
+      onUpdate: ({ editor: updatedEditor, transaction }) => {
         // Check if this update is only due to migration update
         const isMigrationUpdate = transaction?.getMeta("uniqueIdOnlyChange") === true;
-        onChange?.(editor.getJSON(), editor.getHTML(), { isMigrationUpdate });
+        onChange?.(updatedEditor.getJSON(), updatedEditor.getHTML(), { isMigrationUpdate });
       },
       onDestroy: () => handleEditorReady?.(false),
       onFocus: onEditorFocus,
     },
-    [editable]
+    // extendedEditorProps carries host-app extensions (e.g. Page's /task and
+    // /board slash commands) that are only known after this editor's first
+    // render; without it here the Editor keeps whatever value was captured
+    // at construction time and never picks up extensions added later.
+    [editable, extendedEditorProps]
   );
 
   // Effect for syncing SWR data
@@ -133,8 +137,8 @@ export const useEditor = (props: TEditorHookProps) => {
   // subscribe to assets list changes
   const assetsList = useEditorState({
     editor,
-    selector: ({ editor }) => ({
-      assets: editor?.storage.utility?.assetsList ?? [],
+    selector: ({ editor: selectedEditor }) => ({
+      assets: selectedEditor?.storage.utility?.assetsList ?? [],
     }),
   });
   // trigger callback when assets list changes

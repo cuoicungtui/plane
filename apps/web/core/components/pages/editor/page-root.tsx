@@ -24,7 +24,6 @@ import { ContentLimitBanner } from "./content-limit-banner";
 import { PageEditorBody } from "./editor-body";
 import type { TEditorBodyConfig, TEditorBodyHandlers } from "./editor-body";
 import { PageEditorToolbarRoot } from "./toolbar";
-import { PageTaskEmbedPicker } from "./embeds";
 
 export type TPageRootHandlers = {
   create: (payload: Partial<TPage>) => Promise<Partial<TPage> | undefined>;
@@ -187,7 +186,6 @@ export const PageRoot = observer(function PageRoot(props: TPageRootProps) {
           onCollaborationStateChange={setCollaborationState}
         />
       </div>
-      <PageTaskEmbedPicker eventName={`plane:page-task-embed:${page.id}`} projectId={projectId} workspaceSlug={workspaceSlug} />
       <PageNavigationPaneRoot
         storeType={storeType}
         handleClose={handleCloseNavigationPane}

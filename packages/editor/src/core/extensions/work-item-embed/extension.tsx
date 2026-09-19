@@ -16,10 +16,15 @@ type Props = {
     issueId,
     projectId,
     workspaceSlug,
+    updateAttributes,
+    deleteNode,
   }: {
-    issueId: string;
+    // undefined while the block is a draft that hasn't resolved to a real work item yet (D05)
+    issueId: string | undefined;
     projectId: string | undefined;
     workspaceSlug: string | undefined;
+    updateAttributes: (attrs: Partial<TWorkItemEmbedAttributes>) => void;
+    deleteNode: () => void;
   }) => React.ReactNode;
 };
 
@@ -29,11 +34,13 @@ export function WorkItemEmbedExtension(props: Props) {
       return ReactNodeViewRenderer((issueProps: NodeViewProps) => {
         const attrs = issueProps.node.attrs as TWorkItemEmbedAttributes;
         return (
-          <NodeViewWrapper key={attrs[EWorkItemEmbedAttributeNames.ID]}>
+          <NodeViewWrapper key={attrs[EWorkItemEmbedAttributeNames.ID]} className="block">
             {props.widgetCallback({
-              issueId: attrs[EWorkItemEmbedAttributeNames.ENTITY_IDENTIFIER] ?? "",
+              issueId: attrs[EWorkItemEmbedAttributeNames.ENTITY_IDENTIFIER],
               projectId: attrs[EWorkItemEmbedAttributeNames.PROJECT_IDENTIFIER],
               workspaceSlug: attrs[EWorkItemEmbedAttributeNames.WORKSPACE_IDENTIFIER],
+              updateAttributes: issueProps.updateAttributes,
+              deleteNode: issueProps.deleteNode,
             })}
           </NodeViewWrapper>
         );
