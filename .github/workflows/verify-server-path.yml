@@ -37,4 +37,9 @@ jobs:
             echo '--- .env present? ---'; test -f /opt/plane/.env && echo yes || echo no
             echo '--- compose file present? ---'; ls /opt/plane/*.yml /opt/plane/*.yaml 2>&1 || true
             echo '--- currently listening ports (80/443/22) ---'; sudo ss -tlnp 2>/dev/null | grep -E ':80 |:443 |:22 ' || ss -tlnp | grep -E ':80 |:443 |:22 '
+            echo '--- docker ps ---'; cd /opt/plane && docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+            echo '--- api logs (tail 80) ---'; docker logs --tail 80 plane_api_1 2>&1 || echo 'no plane_api_1'
+            echo '--- migrator logs (tail 80) ---'; docker logs --tail 80 plane_migrator_1 2>&1 || echo 'no plane_migrator_1'
+            echo '--- proxy logs (tail 40) ---'; docker logs --tail 40 plane_proxy_1 2>&1 || echo 'no plane_proxy_1'
+            echo '--- web logs (tail 40) ---'; docker logs --tail 40 plane_web_1 2>&1 || echo 'no plane_web_1'
           "
