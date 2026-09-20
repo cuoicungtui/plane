@@ -63,17 +63,23 @@ jobs:
             fi
 
             # .env'"'"'s APP_RELEASE (v1.4.2) is stale and no longer resolves in GHCR.
-            # Use the image tag the live container is ALREADY running (present locally),
-            # so recreation does not require pulling anything.
-            RUNNING_TAG=$(docker inspect plane_live_1 --format "{{.Config.Image}}" | sed "s#.*plane-live:##")
-            echo "Recreating live using already-present image tag: $RUNNING_TAG"
-
-            # The legacy docker-compose v1.29.2 on this host cannot "recreate" a
-            # container from a BuildKit-built image (KeyError: ContainerConfig).
-            # Work around it by removing the old container first, then creating
-            # a fresh one. The live service is stateless (no named volumes), so
-            # this only affects its own websocket connections, not data.
-            docker rm -f plane_live_1
+            # Find whatever live container currently exists (docker ps --filter name=
+            # is a substring match, so this also matches a container docker-compose
+            # renamed to "<hash>_plane_live_1" after a previous failed recreate),
+            # capture its already-present image tag, then remove it. The legacy
+            # docker-compose v1.29.2 on this host cannot "recreate" a container from
+            # a BuildKit-built image in place (KeyError: ContainerConfig), so we must
+            # remove the old one first and let it create a fresh one. live has no
+            # named volumes, so this only affects its own websocket connections.
+            CID=$(docker ps -aq --filter "name=plane_live_1" | head -1)
+            if [ -n "$CID" ]; then
+              RUNNING_TAG=$(docker inspect "$CID" --format "{{.Config.Image}}" | sed "s#.*plane-live:##")
+              echo "Found existing live container $CID using image tag: $RUNNING_TAG"
+              docker rm -f "$CID"
+            else
+              RUNNING_TAG="latest"
+              echo "No existing live container found, defaulting to tag: $RUNNING_TAG"
+            fi
 
             # Only the live service is recreated to pick up the new env var.
             # No other container, port, volume, or the database is touched.
