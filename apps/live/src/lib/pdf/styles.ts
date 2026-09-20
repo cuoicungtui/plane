@@ -224,6 +224,21 @@ export const pdfStyles = StyleSheet.create({
     flex: 1,
     color: TEXT_COLORS.primary, // text-primary
   },
+  embedPlaceholder: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: BACKGROUND_COLORS.layer1,
+    padding: 12,
+    borderRadius: 4,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: BORDER_COLORS.subtle,
+  },
+  embedPlaceholderText: {
+    color: TEXT_COLORS.secondary,
+    fontSize: 10,
+  },
   mention: {
     backgroundColor: MENTION_COLORS.background, // bg-accent-primary/20 equivalent
     color: MENTION_COLORS.text, // text-accent-primary

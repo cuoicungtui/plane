@@ -9,7 +9,7 @@ import type { Style } from "@react-pdf/types";
 import type { ReactElement } from "react";
 import { CORE_EXTENSIONS } from "@plane/editor";
 import { BACKGROUND_COLORS, EDITOR_BACKGROUND_COLORS, resolveColorForPdf, TEXT_COLORS } from "./colors";
-import { CheckIcon, ClipboardIcon, DocumentIcon, GlobeIcon, LightbulbIcon, LinkIcon } from "./icons";
+import { CheckIcon, ClipboardIcon, DocumentIcon, GlobeIcon, LightbulbIcon, LinkIcon, TaskIcon } from "./icons";
 import { applyMarks } from "./mark-renderers";
 import { pdfStyles } from "./styles";
 import type { KeyGenerator, NodeRendererRegistry, PDFExportMetadata, PDFRenderContext, TipTapNode } from "./types";
@@ -334,6 +334,33 @@ export const nodeRenderers: NodeRendererRegistry = {
       <View key={ctx.getKey()} style={[pdfStyles.callout, { backgroundColor }]}>
         <View style={pdfStyles.calloutIconContainer}>{getCalloutIcon(node, TEXT_COLORS.primary)}</View>
         <View style={[pdfStyles.calloutContent, { color: TEXT_COLORS.primary }]}>{children}</View>
+      </View>
+    );
+  },
+
+  // Atom nodes with no PM content of their own (whiteboard canvas, work item
+  // card) — without a renderer here, renderNodeWithContext's fallback drops
+  // them as an empty <View />, silently vanishing from the exported PDF.
+  // Neither embed's live rendering is reproducible in @react-pdf/renderer, so
+  // this renders a labeled placeholder instead of leaving blank space.
+  "whiteboard-embed-component": (_node: TipTapNode, _children: ReactElement[], ctx: PDFRenderContext): ReactElement => (
+    <View key={ctx.getKey()} style={pdfStyles.embedPlaceholder} wrap={false}>
+      <ClipboardIcon size={14} color={TEXT_COLORS.tertiary} />
+      <Text style={pdfStyles.embedPlaceholderText}>Whiteboard (open in Plane to view contents)</Text>
+    </View>
+  ),
+
+  [CORE_EXTENSIONS.WORK_ITEM_EMBED]: (
+    node: TipTapNode,
+    _children: ReactElement[],
+    ctx: PDFRenderContext
+  ): ReactElement => {
+    const entityName = (node.attrs?.entity_name as string) || "";
+    const label = entityName ? `Work item: ${entityName}` : "Work item (open in Plane to view)";
+    return (
+      <View key={ctx.getKey()} style={pdfStyles.embedPlaceholder} wrap={false}>
+        <TaskIcon size={14} color={TEXT_COLORS.tertiary} />
+        <Text style={pdfStyles.embedPlaceholderText}>{label}</Text>
       </View>
     );
   },
