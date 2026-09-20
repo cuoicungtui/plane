@@ -45,4 +45,10 @@ jobs:
             echo '--- Caddyfile ---'; cat /opt/plane/Caddyfile 2>&1 || echo 'NOT FOUND'
             echo '--- live logs (tail 120) ---'; docker logs --tail 120 plane_live_1 2>&1 || echo 'no plane_live_1'
             echo '--- proxy logs grep live/collaboration (tail 200) ---'; docker logs --tail 200 plane_proxy_1 2>&1 | grep -i -E 'live|collaboration|upgrade|101|websocket' || echo 'no matches'
+            echo '--- live container API_BASE_URL env ---'; docker exec plane_live_1 printenv API_BASE_URL 2>&1 || echo 'FAILED'
+            echo '--- live container -> api:8000/api/users/me/ (no cookie, expect 401/403 not 404) ---'
+            docker exec plane_live_1 node -e \"fetch('http://api:8000/api/users/me/').then(async r => console.log('STATUS', r.status, JSON.stringify((await r.text()).slice(0,200)))).catch(e => console.log('FETCH_ERROR', e.message))\" 2>&1 || echo 'FAILED'
+            echo '--- api container hostname resolution from live container ---'; docker exec plane_live_1 getent hosts api 2>&1 || echo 'FAILED'
+            echo '--- docker network membership: api ---'; docker inspect plane_api_1 --format '{{json .NetworkSettings.Networks}}' 2>&1 || echo 'FAILED'
+            echo '--- docker network membership: live ---'; docker inspect plane_live_1 --format '{{json .NetworkSettings.Networks}}' 2>&1 || echo 'FAILED'
           "
