@@ -43,4 +43,6 @@ jobs:
             echo '--- proxy logs (tail 40) ---'; docker logs --tail 40 plane_proxy_1 2>&1 || echo 'no plane_proxy_1'
             echo '--- web logs (tail 40) ---'; docker logs --tail 40 plane_web_1 2>&1 || echo 'no plane_web_1'
             echo '--- Caddyfile ---'; cat /opt/plane/Caddyfile 2>&1 || echo 'NOT FOUND'
+            echo '--- live logs (tail 120) ---'; docker logs --tail 120 plane_live_1 2>&1 || echo 'no plane_live_1'
+            echo '--- proxy logs grep live/collaboration (tail 200) ---'; docker logs --tail 200 plane_proxy_1 2>&1 | grep -i -E 'live|collaboration|upgrade|101|websocket' || echo 'no matches'
           "
