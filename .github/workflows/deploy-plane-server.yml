@@ -82,9 +82,15 @@ jobs:
             cd '${PLANE_SERVER_ROOT}'
             export APP_RELEASE='${IMAGE_TAG}'
 
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE='docker compose'
+            else
+              COMPOSE='docker-compose'
+            fi
+
             # Pull first; if any image is missing/unreachable, abort BEFORE
             # touching the running stack (rule: never break prod on a bad pull).
-            docker compose --env-file .env -f docker-compose.plane.yml.new pull web space admin live api worker beat-worker migrator
+            \$COMPOSE --env-file .env -f docker-compose.plane.yml.new pull web space admin live api worker beat-worker migrator
 
             # Swap the manifest in only after a successful pull.
             mv docker-compose.plane.yml.new docker-compose.plane.yml
@@ -93,7 +99,7 @@ jobs:
             # volume (pgdata, redisdata, uploads, rabbitmq_data, ...) are left
             # running untouched. Compose recreates only the containers whose
             # image actually changed (the 5 app services).
-            docker compose --env-file .env -f docker-compose.plane.yml up -d --remove-orphans
+            \$COMPOSE --env-file .env -f docker-compose.plane.yml up -d --remove-orphans
           "
 
       - name: Smoke test
@@ -109,7 +115,8 @@ jobs:
             for attempt in \$(seq 1 30); do curl -fsS 'http://127.0.0.1/' >/dev/null && exit 0; sleep 2; done
             echo 'Smoke test failed — dumping recent logs (containers were NOT rolled back automatically):' >&2
             cd '${PLANE_SERVER_ROOT}'
-            docker compose --env-file .env -f docker-compose.plane.yml ps
-            docker compose --env-file .env -f docker-compose.plane.yml logs --tail=120 proxy api web
+            if docker compose version >/dev/null 2>&1; then COMPOSE='docker compose'; else COMPOSE='docker-compose'; fi
+            \$COMPOSE --env-file .env -f docker-compose.plane.yml ps
+            \$COMPOSE --env-file .env -f docker-compose.plane.yml logs --tail=120 proxy api web
             exit 1
           "
