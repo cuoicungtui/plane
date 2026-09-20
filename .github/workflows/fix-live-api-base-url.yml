@@ -68,6 +68,13 @@ jobs:
             RUNNING_TAG=$(docker inspect plane_live_1 --format "{{.Config.Image}}" | sed "s#.*plane-live:##")
             echo "Recreating live using already-present image tag: $RUNNING_TAG"
 
+            # The legacy docker-compose v1.29.2 on this host cannot "recreate" a
+            # container from a BuildKit-built image (KeyError: ContainerConfig).
+            # Work around it by removing the old container first, then creating
+            # a fresh one. The live service is stateless (no named volumes), so
+            # this only affects its own websocket connections, not data.
+            docker rm -f plane_live_1
+
             # Only the live service is recreated to pick up the new env var.
             # No other container, port, volume, or the database is touched.
             APP_RELEASE="$RUNNING_TAG" $COMPOSE --env-file .env -f docker-compose.plane.yml up -d --no-deps live
