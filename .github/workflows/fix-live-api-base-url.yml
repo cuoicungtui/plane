@@ -1,0 +1,88 @@
+name: Fix Live API_BASE_URL (internal service URL)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PLANE_SERVER_ROOT: /opt/plane
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          test -n "$SERVER_HOST" && test -n "$SERVER_SSH_KEY" && test -n "$SERVER_USER"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/plane_deploy_key
+          chmod 600 ~/.ssh/plane_deploy_key
+          ssh-keyscan -p "${SERVER_PORT:-22}" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Fix API_BASE_URL in .env and recreate only the live container
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/plane_deploy_key -p ${SERVER_PORT:-22} -o BatchMode=yes -o IdentitiesOnly=yes"
+          SSH_TARGET="${SERVER_USER}@${SERVER_HOST}"
+          ssh $SSH_OPTS "$SSH_TARGET" '
+            set -eu
+            cd "'"${PLANE_SERVER_ROOT}"'"
+
+            if ! grep -q "^API_BASE_URL=" .env; then
+              echo "No API_BASE_URL override found in .env — nothing to fix (already using the http://api:8000 default)."
+              exit 0
+            fi
+
+            CURRENT=$(grep "^API_BASE_URL=" .env | head -1)
+            echo "Current: $CURRENT"
+
+            if [ "$CURRENT" = "API_BASE_URL=http://api:8000" ]; then
+              echo "API_BASE_URL is already correct — nothing to do."
+              exit 0
+            fi
+
+            BACKUP=".env.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+            cp .env "$BACKUP"
+            sed -i "s#^API_BASE_URL=.*#API_BASE_URL=http://api:8000#" .env
+            echo "Updated. Backup kept at $BACKUP"
+            echo "New: $(grep "^API_BASE_URL=" .env | head -1)"
+
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE="docker compose"
+            else
+              COMPOSE="docker-compose"
+            fi
+
+            # Only the live service is recreated to pick up the new env var.
+            # No other container, port, volume, or the database is touched.
+            $COMPOSE --env-file .env -f docker-compose.plane.yml up -d --no-deps live
+          '
+
+      - name: Verify live container now has the correct API_BASE_URL and can authenticate
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/plane_deploy_key -p ${SERVER_PORT:-22} -o BatchMode=yes -o IdentitiesOnly=yes"
+          SSH_TARGET="${SERVER_USER}@${SERVER_HOST}"
+          ssh $SSH_OPTS "$SSH_TARGET" '
+            set -eu
+            for attempt in $(seq 1 15); do
+              docker exec plane_live_1 printenv API_BASE_URL 2>/dev/null && break
+              sleep 2
+            done
+            echo "--- live -> api:8000/api/users/me/ (no cookie, expect 401 not 404) ---"
+            docker exec plane_live_1 node -e "fetch(\"http://api:8000/api/users/me/\").then(async r => console.log(\"STATUS\", r.status, JSON.stringify((await r.text()).slice(0,200)))).catch(e => console.log(\"FETCH_ERROR\", e.message))"
+          '
