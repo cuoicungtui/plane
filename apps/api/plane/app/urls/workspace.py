@@ -36,6 +36,7 @@ from plane.app.views import (
     WorkspaceHomePreferenceViewSet,
     WorkspaceStickyViewSet,
     WorkspaceUserPreferenceViewSet,
+    WorkspaceWhiteboardLibraryEndpoint,
 )
 
 
@@ -256,5 +257,10 @@ urlpatterns = [
         "workspaces/<str:slug>/sidebar-preferences/",
         WorkspaceUserPreferenceViewSet.as_view(),
         name="workspace-user-preference",
+    ),
+    path(
+        "workspaces/<str:slug>/whiteboard-library/",
+        WorkspaceWhiteboardLibraryEndpoint.as_view(),
+        name="workspace-whiteboard-library",
     ),
 ]

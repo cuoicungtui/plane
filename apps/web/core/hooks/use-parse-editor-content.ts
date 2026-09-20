@@ -12,12 +12,63 @@ import { getBase64Image, getEditorAssetSrc } from "@plane/utils";
 import type { TCustomComponentsMetaData } from "@plane/utils";
 // hooks
 import { useMember } from "@/hooks/store/use-member";
+// services
+import { PageWhiteboardService } from "@/services/page";
 // plane web hooks
 import { useAdditionalEditorMention } from "@/hooks/use-additional-editor-mention";
 
 type TArgs = {
   projectId?: string;
   workspaceSlug: string;
+};
+
+const whiteboardService = new PageWhiteboardService();
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
+
+type TWhiteboardExportArgs = {
+  boardId: string;
+  pageId: string;
+  projectId: string;
+  workspaceSlug: string;
+};
+
+// PDF/HTML export runs entirely client-side (this parser is DOM-based), so
+// pulling in Excalidraw's canvas renderer only inside this function — rather
+// than as a top-level import — keeps it out of every export that has no
+// whiteboard embed to rasterize.
+const renderWhiteboardToImage = async ({
+  boardId,
+  pageId,
+  projectId,
+  workspaceSlug,
+}: TWhiteboardExportArgs): Promise<string | null> => {
+  const { exportToBlob } = await import("@excalidraw/excalidraw");
+  const board = await whiteboardService.retrieve(workspaceSlug, projectId, pageId, boardId);
+  const scene = (board.scene ?? {}) as { elements?: any[]; appState?: any; files?: Record<string, any> };
+  const elements = (scene.elements ?? []).filter((element: any) => !element.isDeleted);
+  if (elements.length === 0) return null;
+  const files: Record<string, any> = { ...scene.files };
+  await Promise.all(
+    board.asset_ids.map(async (assetId) => {
+      try {
+        const assetUrl = getEditorAssetSrc({ assetId, projectId, workspaceSlug }) ?? "";
+        const response = await fetch(assetUrl);
+        const blob = await response.blob();
+        files[assetId] = { id: assetId, dataURL: await blobToDataUrl(blob), mimeType: blob.type, created: Date.now() };
+      } catch {
+        /* A missing asset renders without that element rather than failing the whole export. */
+      }
+    })
+  );
+  const blob = await exportToBlob({ elements, appState: scene.appState ?? {}, files });
+  return blobToDataUrl(blob);
 };
 
 export const useParseEditorContent = (args: TArgs) => {
@@ -168,18 +219,49 @@ export const useParseEditorContent = (args: TArgs) => {
         component.replaceWith(fallback);
       });
       const whiteboardEmbedComponents = doc.querySelectorAll("whiteboard-embed-component");
-      whiteboardEmbedComponents.forEach((component) => {
+      const whiteboardFallback = () => {
         const fallback = doc.createElement("p");
         fallback.textContent = "Whiteboard (open the Page to view the canvas)";
-        component.replaceWith(fallback);
-      });
+        return fallback;
+      };
+      if (noAssets) {
+        whiteboardEmbedComponents.forEach((component) => component.replaceWith(whiteboardFallback()));
+      } else {
+        await Promise.all(
+          Array.from(whiteboardEmbedComponents).map(async (component) => {
+            const boardId = component.getAttribute("board_identifier");
+            const pageId = component.getAttribute("page_identifier");
+            const boardWorkspaceSlug = component.getAttribute("workspace_identifier") ?? workspaceSlug;
+            try {
+              if (!boardId || !pageId || !projectId || !boardWorkspaceSlug) throw new Error("Missing identifiers");
+              const imageSrc = await renderWhiteboardToImage({
+                boardId,
+                pageId,
+                projectId,
+                workspaceSlug: boardWorkspaceSlug,
+              });
+              if (!imageSrc) {
+                component.replaceWith(whiteboardFallback());
+                return;
+              }
+              const img = doc.createElement("img");
+              img.src = imageSrc;
+              img.style.width = "100%";
+              component.replaceWith(img);
+            } catch (error) {
+              console.error("Failed to render whiteboard for export:", error);
+              component.replaceWith(whiteboardFallback());
+            }
+          })
+        );
+      }
       // serialize the document back into a string
       let serializedDoc = doc.body.innerHTML;
       // remove null colors from table elements
       serializedDoc = serializedDoc.replace(/background-color: null/g, "").replace(/color: null/g, "");
       return serializedDoc;
     },
-    [getUserDetails, parseAdditionalEditorContent]
+    [getUserDetails, parseAdditionalEditorContent, projectId, workspaceSlug]
   );
 
   /**

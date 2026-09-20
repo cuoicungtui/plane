@@ -84,7 +84,7 @@ export const useExtendedEditorProps = (
       slashCommandOptions: options,
       embed: {
         whiteboard: {
-          widgetCallback: ({ boardId, pageId, workspaceSlug: boardWorkspaceSlug }) => (
+          widgetCallback: ({ boardId, pageId, workspaceSlug: boardWorkspaceSlug, height, onHeightChange }) => (
             <PageWhiteboardEmbed
               boardId={boardId}
               pageId={pageId ?? page.id}
@@ -92,6 +92,8 @@ export const useExtendedEditorProps = (
               projectId={projectId}
               workspaceSlug={boardWorkspaceSlug ?? workspaceSlug}
               readOnly={!page.isContentEditable}
+              height={height}
+              onHeightChange={onHeightChange}
             />
           ),
         },

@@ -36,3 +36,23 @@ class PageWhiteboard(BaseModel):
 
     def __str__(self):
         return f"{self.page_id} <{self.id}>"
+
+
+class WorkspaceWhiteboardLibrary(BaseModel):
+    """The shared Excalidraw Library for a workspace.
+
+    One row per workspace: every whiteboard embed in that workspace loads
+    and contributes to this same set of library items.
+    """
+
+    workspace = models.OneToOneField(
+        "db.Workspace", on_delete=models.CASCADE, related_name="whiteboard_library"
+    )
+    library_items = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = "workspace_whiteboard_libraries"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.workspace_id} <{self.id}>"

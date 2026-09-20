@@ -11,6 +11,7 @@ from .project.base import (
     ProjectArchiveUnarchiveEndpoint,
 )
 from .page.whiteboard import PageWhiteboardEndpoint
+from .workspace.whiteboard import WorkspaceWhiteboardLibraryEndpoint
 
 from .project.invite import (
     UserProjectInvitationsViewset,

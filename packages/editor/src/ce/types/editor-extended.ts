@@ -24,6 +24,11 @@ export type IEditorPropsExtended = {
         pageId: string | undefined;
         workspaceSlug: string | undefined;
         schemaVersion: number | undefined;
+        // D09: the canvas renders inline in the document flow (no modal), so
+        // its height is a document-level layout choice a user can drag to
+        // resize, persisted on the node itself.
+        height: number | undefined;
+        onHeightChange: (height: number) => void;
       }) => React.ReactNode;
     };
   };

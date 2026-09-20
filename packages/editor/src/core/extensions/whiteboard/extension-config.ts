@@ -1,11 +1,17 @@
 import { mergeAttributes, Node } from "@tiptap/core";
+import { WHITEBOARD_DEFAULT_HEIGHT } from "./types";
 
 export const WhiteboardEmbedExtensionConfig = Node.create({
   name: "whiteboard-embed-component",
   group: "block",
+  // Not draggable: the canvas needs raw mouse-drag gestures for drawing
+  // (rectangles, arrows, freehand, the text tool's placement drag). A
+  // draggable node gets a native HTML `draggable` attribute on its whole
+  // DOM wrapper, which hijacks any press-and-drag inside the canvas as a
+  // "move this block" gesture before Excalidraw ever sees it.
   atom: true,
   selectable: true,
-  draggable: true,
+  draggable: false,
   addAttributes() {
     return {
       id: { default: undefined },
@@ -13,6 +19,13 @@ export const WhiteboardEmbedExtensionConfig = Node.create({
       page_identifier: { default: undefined },
       workspace_identifier: { default: undefined },
       schema_version: { default: 1 },
+      height: {
+        default: WHITEBOARD_DEFAULT_HEIGHT,
+        parseHTML: (element: HTMLElement) => {
+          const value = element.getAttribute("height");
+          return value ? Number(value) : WHITEBOARD_DEFAULT_HEIGHT;
+        },
+      },
     };
   },
   parseHTML() {

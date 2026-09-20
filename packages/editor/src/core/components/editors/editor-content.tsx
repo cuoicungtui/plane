@@ -6,7 +6,7 @@
 
 import { EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 
 type Props = {
   className?: string;
@@ -19,12 +19,22 @@ type Props = {
 export function EditorContentWrapper(props: Props) {
   const { editor, className, children, tabIndex, id } = props;
 
+  // React's onFocus fires on focusin, which bubbles from every descendant —
+  // including native-focusable elements a NodeView renders inside its own
+  // atom node (e.g. the whiteboard embed's Excalidraw canvas, which creates
+  // and focuses a <textarea> when its text tool is used). Without the target
+  // check, that bubbled focus event would run this handler and call
+  // editor.chain().focus(), which re-focuses the ProseMirror root and yanks
+  // focus straight back out of the NodeView's own content. Only react when
+  // this wrapper div itself is the thing that received focus (e.g. via
+  // tabIndex or a click landing on its own padding, not on any child).
+  const handleFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    editor?.chain().focus(undefined, { scrollIntoView: false }).run();
+  };
+
   return (
-    <div
-      tabIndex={tabIndex}
-      onFocus={() => editor?.chain().focus(undefined, { scrollIntoView: false }).run()}
-      className={className}
-    >
+    <div tabIndex={tabIndex} onFocus={handleFocus} className={className}>
       <EditorContent editor={editor} id={id} />
       {children}
     </div>
