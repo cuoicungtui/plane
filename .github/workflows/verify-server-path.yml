@@ -42,4 +42,5 @@ jobs:
             echo '--- migrator logs (tail 80) ---'; docker logs --tail 80 plane_migrator_1 2>&1 || echo 'no plane_migrator_1'
             echo '--- proxy logs (tail 40) ---'; docker logs --tail 40 plane_proxy_1 2>&1 || echo 'no plane_proxy_1'
             echo '--- web logs (tail 40) ---'; docker logs --tail 40 plane_web_1 2>&1 || echo 'no plane_web_1'
+            echo '--- Caddyfile ---'; cat /opt/plane/Caddyfile 2>&1 || echo 'NOT FOUND'
           "
