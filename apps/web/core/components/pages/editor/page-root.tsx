@@ -81,11 +81,16 @@ export const PageRoot = observer(function PageRoot(props: TPageRootProps) {
   const handleEditorReady = useCallback(
     (status: boolean) => {
       setEditorReady(status);
-      if (editorRef.current && !page.editor.editorRef) {
-        setEditorRef(editorRef.current);
-      }
+      // Always resync the store's ref to the live editor instance. The underlying
+      // Tiptap editor can be torn down and recreated without this component
+      // unmounting (e.g. a hydration-mismatch remount, or a collaboration
+      // provider reconnect) — guarding this on "only if unset" left the store
+      // pointing at a destroyed, empty editor instance forever, which made
+      // every consumer of page.editor.editorRef (export, markdown export,
+      // AI menu, content browser) read stale/empty content.
+      setEditorRef(status ? editorRef.current : null);
     },
-    [page.editor.editorRef, setEditorRef]
+    [setEditorRef]
   );
 
   useEffect(() => {

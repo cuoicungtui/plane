@@ -62,8 +62,8 @@ const renderWhiteboardToImage = async ({
         const response = await fetch(assetUrl);
         const blob = await response.blob();
         files[assetId] = { id: assetId, dataURL: await blobToDataUrl(blob), mimeType: blob.type, created: Date.now() };
-      } catch {
-        /* A missing asset renders without that element rather than failing the whole export. */
+      } catch (assetError) {
+        console.error("Failed to fetch whiteboard asset for PDF export", assetId, assetError);
       }
     })
   );

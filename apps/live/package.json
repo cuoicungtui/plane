@@ -53,6 +53,7 @@
     "express-ws": "catalog:",
     "helmet": "catalog:",
     "ioredis": "catalog:",
+    "playwright-core": "^1.63.0",
     "react": "catalog:",
     "sharp": "catalog:",
     "uuid": "catalog:",

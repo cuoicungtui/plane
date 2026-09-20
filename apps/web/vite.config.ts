@@ -33,6 +33,13 @@ export default defineConfig(() => ({
   },
   server: {
     host: "127.0.0.1",
+    // apps/live's headless-browser whiteboard renderer (whiteboard-render.service.ts)
+    // navigates through the Docker network's reverse proxy (`http://proxy`) so the
+    // exported page's own relative `/api/*` fetches get routed to the api service
+    // exactly as they are for real browsers; direct `web:3000` access is also
+    // allowed for cases that bypass the proxy. Vite otherwise rejects both as
+    // unrecognized Host headers.
+    allowedHosts: ["web", "proxy"],
   },
   // No SSR-specific overrides needed; alias resolves to ESM build
 }));

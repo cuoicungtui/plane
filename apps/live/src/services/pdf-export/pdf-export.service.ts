@@ -10,6 +10,7 @@ import { getAllDocumentFormatsFromDocumentEditorBinaryData } from "@plane/editor
 import type { PDFExportMetadata, TipTapDocument } from "@/lib/pdf";
 import { renderPlaneDocToPdfBuffer } from "@/lib/pdf";
 import { getPageService } from "@/services/page/handler";
+import { renderWhiteboardImage } from "@/services/whiteboard/whiteboard-render.service";
 import type { TDocumentTypes } from "@/types";
 import {
   PdfContentFetchError,
@@ -25,6 +26,10 @@ const IMAGE_TIMEOUT_MS = 8000;
 const CONTENT_FETCH_TIMEOUT_MS = 7000;
 const PDF_RENDER_TIMEOUT_MS = 15000;
 const IMAGE_MAX_DIMENSION = 1200;
+// Each render is its own headless-browser navigation, so these stay serial and
+// low-concurrency rather than matching IMAGE_CONCURRENCY's cheap HTTP fetches.
+const WHITEBOARD_CONCURRENCY = 2;
+const WHITEBOARD_TIMEOUT_MS = 18000;
 
 type TipTapNode = {
   type: string;
@@ -66,6 +71,27 @@ export class PdfExportService extends Effect.Service<PdfExportService>()("PdfExp
 
       traverse(doc);
       return [...new Set(assetIds)];
+    },
+
+    /**
+     * Extracts whiteboard board IDs from document content
+     */
+    extractWhiteboardBoardIds: (doc: TipTapNode): string[] => {
+      const boardIds: string[] = [];
+
+      const traverse = (node: TipTapNode) => {
+        if (node.type === "whiteboard-embed-component" && node.attrs?.board_identifier) {
+          boardIds.push(node.attrs.board_identifier as string);
+        }
+        if (node.content) {
+          for (const child of node.content) {
+            traverse(child);
+          }
+        }
+      };
+
+      traverse(doc);
+      return [...new Set(boardIds)];
     },
 
     /**
@@ -165,10 +191,12 @@ export class PdfExportService extends Effect.Service<PdfExportService>()("PdfExp
         const resolvedUrlMap = yield* tryAsync(
           async () => {
             const urlMap = new Map<string, string>();
-            for (const assetId of assetIds) {
-              const url = await pageService.resolveImageAssetUrl?.(workspaceSlug, assetId, projectId);
-              if (url) urlMap.set(assetId, url);
-            }
+            const resolvedUrls = await Promise.all(
+              assetIds.map((assetId) => pageService.resolveImageAssetUrl?.(workspaceSlug, assetId, projectId))
+            );
+            resolvedUrls.forEach((url, index) => {
+              if (url) urlMap.set(assetIds[index], url);
+            });
             return urlMap;
           },
           () => new Map<string, string>()
@@ -253,6 +281,59 @@ export class PdfExportService extends Effect.Service<PdfExportService>()("PdfExp
       }),
 
     /**
+     * Renders each whiteboard embed's actual drawn content to a PNG via a
+     * headless browser and resolves it for PDF embedding
+     */
+    processWhiteboards: (
+      workspaceSlug: string,
+      projectId: string | undefined,
+      pageId: string,
+      boardIds: string[],
+      cookie: string,
+      requestId: string
+    ): Effect.Effect<Record<string, string>> =>
+      Effect.gen(function* () {
+        if (boardIds.length === 0 || !projectId) {
+          return {};
+        }
+
+        yield* Effect.logDebug("PDF_EXPORT: Rendering whiteboards", {
+          requestId,
+          count: boardIds.length,
+        });
+
+        const renderSingleWhiteboard = (boardId: string) =>
+          Effect.gen(function* () {
+            const dataUri = yield* tryAsync(
+              () => renderWhiteboardImage({ workspaceSlug, projectId, pageId, boardId, cookie }),
+              () => null
+            ).pipe(recoverWithDefault(null as string | null));
+
+            return dataUri ? ([boardId, dataUri] as const) : null;
+          }).pipe(
+            withTimeoutAndRetry(`render whiteboard ${boardId}`, {
+              timeoutMs: WHITEBOARD_TIMEOUT_MS,
+              maxRetries: 0,
+            }),
+            Effect.tapError((error) =>
+              Effect.logWarning("PDF_EXPORT: Whiteboard rendering failed", {
+                requestId,
+                boardId,
+                error,
+              })
+            ),
+            Effect.catchAll(() => Effect.succeed(null as readonly [string, string] | null))
+          );
+
+        const pairs = yield* Effect.forEach(boardIds, renderSingleWhiteboard, {
+          concurrency: WHITEBOARD_CONCURRENCY,
+        });
+
+        const filtered = pairs.filter((p): p is readonly [string, string] => p !== null);
+        return Object.fromEntries(filtered);
+      }),
+
+    /**
      * Renders document to PDF buffer
      */
     renderPdf: (
@@ -328,6 +409,9 @@ export const exportToPdf = (
     // Extract image asset IDs
     const imageAssetIds = service.extractImageAssetIds(content.contentJSON as TipTapNode);
 
+    // Extract whiteboard board IDs
+    const whiteboardBoardIds = service.extractWhiteboardBoardIds(content.contentJSON as TipTapNode);
+
     // Fetch user mentions
     let metadata = yield* service.fetchUserMentions(pageService, pageId, requestId);
 
@@ -343,10 +427,24 @@ export const exportToPdf = (
       metadata = { ...metadata, resolvedImageUrls: resolvedImages };
     }
 
+    // Render whiteboard embeds if needed
+    if (!noAssets && whiteboardBoardIds.length > 0) {
+      const resolvedWhiteboards = yield* service.processWhiteboards(
+        workspaceSlug,
+        projectId,
+        pageId,
+        whiteboardBoardIds,
+        input.cookie,
+        requestId
+      );
+      metadata = { ...metadata, resolvedWhiteboardImages: resolvedWhiteboards };
+    }
+
     yield* Effect.logDebug("PDF_EXPORT: Metadata prepared", {
       requestId,
       userMentions: metadata.userMentions?.length ?? 0,
       resolvedImages: Object.keys(metadata.resolvedImageUrls ?? {}).length,
+      resolvedWhiteboards: Object.keys(metadata.resolvedWhiteboardImages ?? {}).length,
     });
 
     // Render PDF

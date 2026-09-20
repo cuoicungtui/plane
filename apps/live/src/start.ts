@@ -6,6 +6,7 @@
 
 import { logger } from "@plane/logger";
 import { AppError } from "@/lib/errors";
+import { closeWhiteboardRenderBrowser } from "@/services/whiteboard/whiteboard-render.service";
 import { Server } from "./server";
 
 let server: Server;
@@ -30,6 +31,7 @@ process.on("SIGTERM", async () => {
     if (server) {
       await server.destroy();
     }
+    await closeWhiteboardRenderBrowser();
     logger.info("Server shut down gracefully");
   } catch (error) {
     logger.error("Error during graceful shutdown:", error);
@@ -44,6 +46,7 @@ process.on("SIGINT", async () => {
     if (server) {
       await server.destroy();
     }
+    await closeWhiteboardRenderBrowser();
     logger.info("Server shut down gracefully");
   } catch (error) {
     logger.error("Error during graceful shutdown:", error);

@@ -341,14 +341,31 @@ export const nodeRenderers: NodeRendererRegistry = {
   // Atom nodes with no PM content of their own (whiteboard canvas, work item
   // card) — without a renderer here, renderNodeWithContext's fallback drops
   // them as an empty <View />, silently vanishing from the exported PDF.
-  // Neither embed's live rendering is reproducible in @react-pdf/renderer, so
-  // this renders a labeled placeholder instead of leaving blank space.
-  "whiteboard-embed-component": (_node: TipTapNode, _children: ReactElement[], ctx: PDFRenderContext): ReactElement => (
-    <View key={ctx.getKey()} style={pdfStyles.embedPlaceholder} wrap={false}>
-      <ClipboardIcon size={14} color={TEXT_COLORS.tertiary} />
-      <Text style={pdfStyles.embedPlaceholderText}>Whiteboard (open in Plane to view contents)</Text>
-    </View>
-  ),
+  // The whiteboard's actual drawn content is rendered ahead of time by a
+  // headless browser (see processWhiteboards/renderWhiteboardImage) and
+  // handed in via ctx.metadata.resolvedWhiteboardImages; when that's missing
+  // (rendering failed, timed out, or is disabled) this falls back to a
+  // labeled placeholder rather than leaving blank space. Work item cards have
+  // no equivalent renderer at all, so they always get the placeholder.
+  "whiteboard-embed-component": (node: TipTapNode, _children: ReactElement[], ctx: PDFRenderContext): ReactElement => {
+    const boardId = (node.attrs?.board_identifier as string) || "";
+    const resolvedImage = boardId ? ctx.metadata?.resolvedWhiteboardImages?.[boardId] : undefined;
+
+    if (resolvedImage) {
+      return (
+        <View key={ctx.getKey()} style={{ width: "100%", alignItems: "center" }} wrap={false}>
+          <Image src={resolvedImage} style={[pdfStyles.image, { maxWidth: "100%", maxHeight: 500 }]} />
+        </View>
+      );
+    }
+
+    return (
+      <View key={ctx.getKey()} style={pdfStyles.embedPlaceholder} wrap={false}>
+        <ClipboardIcon size={14} color={TEXT_COLORS.tertiary} />
+        <Text style={pdfStyles.embedPlaceholderText}>Whiteboard (open in Plane to view contents)</Text>
+      </View>
+    );
+  },
 
   [CORE_EXTENSIONS.WORK_ITEM_EMBED]: (
     node: TipTapNode,

@@ -15,6 +15,12 @@ const envSchema = z.object({
   HOSTNAME: z.string().optional(),
   PORT: z.string().default("3000"),
   API_BASE_URL: z.string().url("API_BASE_URL must be a valid URL"),
+  // Base URL of the web app, used to headlessly render whiteboard embeds for PDF export
+  WEB_BASE_URL: z.string().url("WEB_BASE_URL must be a valid URL").optional(),
+  // Path to a system Chromium binary for whiteboard PDF-export rendering (Playwright's own
+  // downloaded Chromium doesn't run on musl/Alpine; the runtime image installs Alpine's
+  // `chromium` apk package instead and points here)
+  CHROMIUM_EXECUTABLE_PATH: z.string().default("/usr/bin/chromium-browser"),
   // CORS configuration
   CORS_ALLOWED_ORIGINS: z.string().default(""),
   // Live running location

@@ -360,6 +360,12 @@ export const coreRoutes: RouteConfigEntry[] = [
     layout("./(all)/settings/profile/layout.tsx", [
       route("settings/profile/:profileTabId", "./(all)/settings/profile/[profileTabId]/page.tsx"),
     ]),
+
+    // --------------------------------------------------------------------
+    // WHITEBOARD EXPORT (internal — rendered headlessly by apps/live's PDF
+    // export pipeline, never opened by a real user)
+    // --------------------------------------------------------------------
+    route("whiteboard-export/:workspaceSlug/:projectId/:pageId/:boardId", "./(all)/whiteboard-export/page.tsx"),
   ]),
 
   // ========================================================================

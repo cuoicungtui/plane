@@ -62,6 +62,8 @@ export type PDFExportMetadata = {
   userMentions?: PDFUserMention[];
   /** Resolved image URLs: Map of asset ID to presigned URL */
   resolvedImageUrls?: Record<string, string>;
+  /** Rendered whiteboard screenshots: Map of board ID to PNG data URI */
+  resolvedWhiteboardImages?: Record<string, string>;
   /** When true, images and other assets are excluded from the PDF */
   noAssets?: boolean;
 };
