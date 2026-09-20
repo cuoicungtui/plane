@@ -84,8 +84,10 @@ jobs:
 
             if docker compose version >/dev/null 2>&1; then
               COMPOSE='docker compose'
+              LEGACY_COMPOSE=0
             else
               COMPOSE='docker-compose'
+              LEGACY_COMPOSE=1
             fi
 
             # Pull first; if any image is missing/unreachable, abort BEFORE
@@ -95,10 +97,15 @@ jobs:
             # Swap the manifest in only after a successful pull.
             mv docker-compose.plane.yml.new docker-compose.plane.yml
 
-            # No 'down', no '-v': db/redis/mq/minio/proxy and every named
-            # volume (pgdata, redisdata, uploads, rabbitmq_data, ...) are left
-            # running untouched. Compose recreates only the containers whose
-            # image actually changed (the 5 app services).
+            # docker-compose 1.29 (installed on this host) cannot recreate
+            # containers in place on modern Docker Engine (KeyError:
+            # ContainerConfig). 'down' (no '-v') removes containers only —
+            # named volumes (pgdata, redisdata, uploads, rabbitmq_data, ...)
+            # are untouched, so no data is lost, matching the same recovery
+            # step already proven on this exact server's prior pipeline.
+            if [ \"\$LEGACY_COMPOSE\" = 1 ]; then
+              \$COMPOSE --env-file .env -f docker-compose.plane.yml down --remove-orphans
+            fi
             \$COMPOSE --env-file .env -f docker-compose.plane.yml up -d --remove-orphans
           "
 
