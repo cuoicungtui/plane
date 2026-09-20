@@ -39,24 +39,22 @@ jobs:
             set -eu
             cd "'"${PLANE_SERVER_ROOT}"'"
 
-            if ! grep -q "^API_BASE_URL=" .env; then
-              echo "No API_BASE_URL override found in .env — nothing to fix (already using the http://api:8000 default)."
-              exit 0
+            if grep -q "^API_BASE_URL=" .env; then
+              CURRENT=$(grep "^API_BASE_URL=" .env | head -1)
+              echo "Current: $CURRENT"
+
+              if [ "$CURRENT" = "API_BASE_URL=http://api:8000" ]; then
+                echo "API_BASE_URL already correct in .env — still recreating live to make sure the running container picks it up."
+              else
+                BACKUP=".env.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+                cp .env "$BACKUP"
+                sed -i "s#^API_BASE_URL=.*#API_BASE_URL=http://api:8000#" .env
+                echo "Updated. Backup kept at $BACKUP"
+                echo "New: $(grep "^API_BASE_URL=" .env | head -1)"
+              fi
+            else
+              echo "No API_BASE_URL override found in .env — already using the http://api:8000 default. Still recreating live to make sure the running container picks it up."
             fi
-
-            CURRENT=$(grep "^API_BASE_URL=" .env | head -1)
-            echo "Current: $CURRENT"
-
-            if [ "$CURRENT" = "API_BASE_URL=http://api:8000" ]; then
-              echo "API_BASE_URL is already correct — nothing to do."
-              exit 0
-            fi
-
-            BACKUP=".env.bak-$(date -u +%Y%m%dT%H%M%SZ)"
-            cp .env "$BACKUP"
-            sed -i "s#^API_BASE_URL=.*#API_BASE_URL=http://api:8000#" .env
-            echo "Updated. Backup kept at $BACKUP"
-            echo "New: $(grep "^API_BASE_URL=" .env | head -1)"
 
             if docker compose version >/dev/null 2>&1; then
               COMPOSE="docker compose"
@@ -64,9 +62,15 @@ jobs:
               COMPOSE="docker-compose"
             fi
 
+            # .env'"'"'s APP_RELEASE (v1.4.2) is stale and no longer resolves in GHCR.
+            # Use the image tag the live container is ALREADY running (present locally),
+            # so recreation does not require pulling anything.
+            RUNNING_TAG=$(docker inspect plane_live_1 --format "{{.Config.Image}}" | sed "s#.*plane-live:##")
+            echo "Recreating live using already-present image tag: $RUNNING_TAG"
+
             # Only the live service is recreated to pick up the new env var.
             # No other container, port, volume, or the database is touched.
-            $COMPOSE --env-file .env -f docker-compose.plane.yml up -d --no-deps live
+            APP_RELEASE="$RUNNING_TAG" $COMPOSE --env-file .env -f docker-compose.plane.yml up -d --no-deps live
           '
 
       - name: Verify live container now has the correct API_BASE_URL and can authenticate
