@@ -116,7 +116,7 @@ function TaskItemView(props: NodeViewProps & TTaskItemEnhancedProps) {
       as="li"
       data-type="taskItem"
       data-checked={!!attrs.checked}
-      className="relative flex items-center gap-2"
+      className="task-item-enhanced relative flex items-center gap-2"
     >
       <label
         contentEditable={false}

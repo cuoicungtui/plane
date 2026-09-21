@@ -200,6 +200,32 @@ ul[data-type="taskList"] li[data-checked="true"] {
     transition: opacity 0.2s ease;
   }
 }
+/* task-item-enhanced (Page checklist auto-promoted to a work item) renders its
+   own flex row (checkbox, state dropdown, text, meta actions) — reset the
+   plain to-do list's absolute-positioned checkbox/margin-offset layout above,
+   which otherwise makes the checkbox overlap the text and mention pill */
+ul[data-type="taskList"] li.task-item-enhanced > label {
+  position: static;
+  left: auto;
+  margin: 0;
+}
+
+ul[data-type="taskList"] li.task-item-enhanced > div {
+  margin-left: 0;
+}
+
+/* ProseMirror sets `white-space: pre-wrap` inline on the text content span for
+   correct cursor/whitespace handling — that can't be overridden with nowrap.
+   A checklist item's paragraph can still contain hard `<br>` breaks (e.g. from
+   an empty line typed before the mention), which always force a new line
+   regardless of white-space. Without a height cap, the row grows to fit those
+   extra lines and the state badge/meta icons — which stay one line tall and
+   are vertically centered against the whole row — end up floating above the
+   actual visible text instead of sitting on the same line as it. */
+ul[data-type="taskList"] li.task-item-enhanced > div > span[data-node-view-content] {
+  max-height: calc(var(--font-size-list, 1rem) * 1.5);
+  overflow: hidden;
+}
 /* end to-do list */
 
 /* Overwrite tippy-box original max-width */
