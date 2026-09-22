@@ -4,11 +4,11 @@
  * See the LICENSE file for details.
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Script from "next/script";
 import { Links, Meta, Outlet, Scripts } from "react-router";
 import type { LinksFunction } from "react-router";
-import { ThemeProvider, useTheme } from "next-themes";
+import { ThemeProvider } from "next-themes";
 // plane imports
 import { SITE_DESCRIPTION, SITE_NAME } from "@plane/constants";
 import { cn } from "@plane/utils";
@@ -30,9 +30,12 @@ import { isStaleAssetError, recoverFromStaleAsset } from "@/lib/stale-asset-erro
 import { CustomErrorComponent } from "./error";
 import { AppProvider } from "./provider";
 // fonts
+// oxlint-disable-next-line no-unassigned-import
 import "@fontsource-variable/inter";
 import interVariableWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
+// oxlint-disable-next-line no-unassigned-import
 import "@fontsource/material-symbols-rounded";
+// oxlint-disable-next-line no-unassigned-import
 import "@fontsource/ibm-plex-mono";
 
 const APP_TITLE = "Plane | Simple, extensible, open-source project management tool.";
@@ -135,10 +138,15 @@ export default function Root() {
 }
 
 export function HydrateFallback() {
-  const { resolvedTheme } = useTheme();
+  // Server always renders an empty div (no theme available yet). next-themes resolves
+  // the theme synchronously on the client before React hydrates, so reading it here
+  // directly would make the client's first render diverge from the server's markup and
+  // fail hydration. Mirror the server's empty div until after hydration completes, then
+  // switch to the full spinner on the next paint.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  // if we are on the server or the theme is not resolved, return an empty div
-  if (typeof window === "undefined" || resolvedTheme === undefined) return <div />;
+  if (!mounted) return <div />;
 
   return (
     <div className="relative flex h-screen w-full items-center justify-center bg-canvas">
