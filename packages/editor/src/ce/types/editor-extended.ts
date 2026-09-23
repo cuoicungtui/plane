@@ -36,7 +36,7 @@ export type IEditorPropsExtended = {
   // D18: promotes a native checklist item to a real work item once a user is
   // @mentioned inside it — see task-item-enhanced extension.
   taskChecklist?: {
-    onAutoCreate: (args: { title: string; assigneeId: string }) => Promise<string | undefined>;
+    onAutoCreate: (args: { itemId: string; title: string; assigneeId: string }) => Promise<string | undefined>;
     onToggle: (entityIdentifier: string, checked: boolean) => void;
     onTitleChange: (entityIdentifier: string, title: string) => void;
     stateCallback: (props: {

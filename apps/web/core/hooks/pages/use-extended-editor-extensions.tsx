@@ -103,11 +103,17 @@ export const useExtendedEditorProps = (
       // popover, nothing that competes with ProseMirror for input focus.
       taskChecklist: projectId
         ? {
-            onAutoCreate: async ({ title, assigneeId }) => {
+            onAutoCreate: async ({ itemId, title, assigneeId }) => {
               try {
+                // external_id/external_source key this create off the checklist
+                // item's own stable node id, so a duplicate call for the same
+                // item (client retry, cross-tab race, etc.) gets back the
+                // already-created issue instead of a second one.
                 const created = await issueService.createIssue(workspaceSlug, projectId, {
                   name: title,
                   assignee_ids: [assigneeId],
+                  external_id: itemId,
+                  external_source: "PAGE_TASK_CHECKLIST",
                 });
                 return created.id;
               } catch {

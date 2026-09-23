@@ -77,6 +77,12 @@ export type TBaseIssue = {
   is_draft: boolean;
   is_epic?: boolean;
   is_intake?: boolean;
+
+  // identify the same issue across repeated/idempotent create calls from a
+  // given caller (e.g. an external integration, or the page checklist
+  // auto-create flow) so retries/races resolve to one issue, not duplicates.
+  external_id?: string | null;
+  external_source?: string | null;
 };
 
 type IssueRelation = {

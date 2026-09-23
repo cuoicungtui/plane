@@ -401,9 +401,70 @@ class IssueViewSet(BaseViewSet):
                 on_results=lambda issues: issue_on_results(group_by=group_by, issues=issues, sub_group_by=sub_group_by),
             )
 
+    def _get_issue_response_data(self, pk, request):
+        queryset = self.get_queryset()
+        queryset = self.apply_annotations(queryset)
+        issue = (
+            issue_queryset_grouper(
+                queryset=queryset.filter(pk=pk),
+                group_by=None,
+                sub_group_by=None,
+            )
+            .values(
+                "id",
+                "name",
+                "state_id",
+                "sort_order",
+                "completed_at",
+                "estimate_point",
+                "priority",
+                "start_date",
+                "target_date",
+                "sequence_id",
+                "project_id",
+                "parent_id",
+                "cycle_id",
+                "module_ids",
+                "label_ids",
+                "assignee_ids",
+                "sub_issues_count",
+                "created_at",
+                "updated_at",
+                "created_by",
+                "updated_by",
+                "attachment_count",
+                "link_count",
+                "is_draft",
+                "archived_at",
+                "deleted_at",
+            )
+            .first()
+        )
+        datetime_fields = ["created_at", "updated_at"]
+        return user_timezone_converter(issue, datetime_fields, request.user.user_timezone)
+
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
     def create(self, request, slug, project_id):
         project = Project.objects.get(pk=project_id)
+
+        # Idempotency guard: callers that pass both external_id and
+        # external_source (e.g. the page checklist auto-create flow, keyed on
+        # the checklist item's stable node id) get back the already-created
+        # issue instead of a duplicate when the same pair races or retries.
+        external_id = request.data.get("external_id")
+        external_source = request.data.get("external_source")
+        if external_id and external_source:
+            existing_issue = Issue.issue_objects.filter(
+                project_id=project_id,
+                workspace_id=project.workspace_id,
+                external_source=external_source,
+                external_id=external_id,
+            ).first()
+            if existing_issue:
+                return Response(
+                    self._get_issue_response_data(existing_issue.pk, request),
+                    status=status.HTTP_200_OK,
+                )
 
         serializer = IssueCreateSerializer(
             data=request.data,
@@ -429,46 +490,7 @@ class IssueViewSet(BaseViewSet):
                 notification=True,
                 origin=base_host(request=request, is_app=True),
             )
-            queryset = self.get_queryset()
-            queryset = self.apply_annotations(queryset)
-            issue = (
-                issue_queryset_grouper(
-                    queryset=queryset.filter(pk=serializer.data["id"]),
-                    group_by=None,
-                    sub_group_by=None,
-                )
-                .values(
-                    "id",
-                    "name",
-                    "state_id",
-                    "sort_order",
-                    "completed_at",
-                    "estimate_point",
-                    "priority",
-                    "start_date",
-                    "target_date",
-                    "sequence_id",
-                    "project_id",
-                    "parent_id",
-                    "cycle_id",
-                    "module_ids",
-                    "label_ids",
-                    "assignee_ids",
-                    "sub_issues_count",
-                    "created_at",
-                    "updated_at",
-                    "created_by",
-                    "updated_by",
-                    "attachment_count",
-                    "link_count",
-                    "is_draft",
-                    "archived_at",
-                    "deleted_at",
-                )
-                .first()
-            )
-            datetime_fields = ["created_at", "updated_at"]
-            issue = user_timezone_converter(issue, datetime_fields, request.user.user_timezone)
+            issue = self._get_issue_response_data(serializer.data["id"], request)
             # Send the model activity
             model_activity.delay(
                 model_name="issue",
