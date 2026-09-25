@@ -31,6 +31,7 @@ import {
   TableCell,
   TableHeader,
   TableRow,
+  PageCommentsExtension,
   UtilityExtension,
 } from "@/extensions";
 // plane editor extensions
@@ -149,6 +150,7 @@ export const CoreEditorExtensions = (args: TArguments): Extensions => {
     UniqueID.configure({
       provider,
     }),
+    PageCommentsExtension,
   ];
 
   if (!disabledExtensions.includes("image")) {

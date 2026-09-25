@@ -12,7 +12,7 @@ import type { NodeViewProps as TNodeViewProps } from "@tiptap/react";
 // plane imports
 import type { TCustomComponentsMetaData } from "@plane/utils";
 // extension types
-import type { TTextAlign } from "@/extensions";
+import type { TCommentedBlocks, TTextAlign } from "@/extensions";
 // plane editor imports
 import type {
   IEditorPropsExtended,
@@ -138,6 +138,9 @@ export type CoreEditorRefApi = {
   onStateChange: (callback: () => void) => () => void;
   redo: () => void;
   scrollSummary: (marking: IMarking) => void;
+  setCommentedBlocks: (blocks: TCommentedBlocks) => void;
+  hasBlock: (blockId: string) => boolean;
+  scrollToBlock: (blockId: string) => void;
 
   scrollToNodeViaDOMCoordinates: ({ pos, behavior }: { pos?: number; behavior?: ScrollBehavior }) => void;
   setEditorValue: (content: string, emitUpdate?: boolean) => void;

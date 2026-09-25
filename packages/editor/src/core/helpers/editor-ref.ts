@@ -15,8 +15,9 @@ import { getEditorMenuItems } from "@/components/menus";
 // constants
 import { CORE_EXTENSIONS } from "@/constants/extension";
 import { CORE_EDITOR_META } from "@/constants/meta";
+import { refreshPageComments } from "@/extensions/page-comments";
 // types
-import type { EditorRefApi, IEditorProps, TEditorCommands } from "@/types";
+import type { EditorRefApi, IEditorProps } from "@/types";
 // local imports
 import { getParagraphCount } from "./common";
 import { insertContentAtSavedSelection } from "./insert-content-at-cursor-position";
@@ -121,6 +122,25 @@ export const getEditorRefHelpers = (args: TArgs): EditorRefApi => {
       const utilityStorage = editor.storage.utility;
       return utilityStorage.activeDropbarExtensions.length > 0;
     },
+    setCommentedBlocks: (blocks) => {
+      if (!editor || editor.isDestroyed) return;
+      refreshPageComments(editor, blocks);
+    },
+    hasBlock: (blockId) => {
+      if (!editor || editor.isDestroyed) return false;
+      let found = false;
+      editor.state.doc.descendants((node) => {
+        if (found) return false;
+        if (node.attrs?.id === blockId) found = true;
+        return !found;
+      });
+      return found;
+    },
+    scrollToBlock: (blockId) => {
+      if (!editor || editor.isDestroyed) return;
+      const element = editor.view.dom.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+      if (element instanceof HTMLElement) element.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
     scrollSummary: (marking) => {
       if (!editor) return;
       scrollSummary(editor, marking);
@@ -140,16 +160,14 @@ export const getEditorRefHelpers = (args: TArgs): EditorRefApi => {
       const { itemKey } = props;
       const editorItems = getEditorMenuItems(editor);
 
-      const getEditorMenuItem = (itemKey: TEditorCommands) => editorItems.find((item) => item.key === itemKey);
-
-      const item = getEditorMenuItem(itemKey);
+      const item = editorItems.find((menuItem) => menuItem.key === itemKey);
       if (item) {
         item.command(props);
       } else {
         console.warn(`No command found for item: ${itemKey}`);
       }
     },
-    focus: (args) => editor?.commands.focus(args),
+    focus: (focusOptions) => editor?.commands.focus(focusOptions),
     getCoordsFromPos: (pos) => editor?.view.coordsAtPos(pos ?? editor.state.selection.from),
     getCurrentCursorPosition: () => editor?.state.selection.from,
     getAttributesWithExtendedMark: (mark, attribute) => {
@@ -195,8 +213,7 @@ export const getEditorRefHelpers = (args: TArgs): EditorRefApi => {
       const { itemKey } = props;
       const editorItems = getEditorMenuItems(editor);
 
-      const getEditorMenuItem = (itemKey: TEditorCommands) => editorItems.find((item) => item.key === itemKey);
-      const item = getEditorMenuItem(itemKey);
+      const item = editorItems.find((menuItem) => menuItem.key === itemKey);
       if (!item) return false;
 
       return item.isActive(props);

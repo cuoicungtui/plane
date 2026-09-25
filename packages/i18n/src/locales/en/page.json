@@ -337,5 +337,40 @@
   "page_backlinks": {
     "unavailable": "Page unavailable",
     "count": "{count} pages link to this page"
+  },
+  "page_comments": {
+    "comment": "Comment",
+    "placeholder": "Add a comment…",
+    "reply": "Reply",
+    "reply_placeholder": "Reply…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "edited": "edited",
+    "resolve": "Resolve",
+    "reopen": "Reopen",
+    "orphan": "Anchor lost — the content this comment pointed to was removed",
+    "error_title": "Comment failed",
+    "error_message": "Something went wrong. Please try again.",
+    "filter": {
+      "open": "Open",
+      "resolved": "Resolved"
+    },
+    "anchor": {
+      "block": "Block",
+      "text": "Selected text",
+      "board_element": "Whiteboard element"
+    },
+    "empty": {
+      "open": {
+        "title": "No open comments",
+        "description": "Use the comment button in a block's menu to start a discussion."
+      },
+      "resolved": {
+        "title": "Nothing resolved yet",
+        "description": "Resolved threads are kept here."
+      }
+    }
   }
 }

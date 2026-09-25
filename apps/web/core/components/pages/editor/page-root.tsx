@@ -17,6 +17,7 @@ import type { EPageStoreType } from "@/hooks/store";
 // store
 import type { TPageInstance } from "@/store/pages/base-page";
 // local imports
+import { PageCommentsController } from "../comments/controller";
 import { PageNavigationPaneRoot } from "../navigation-pane";
 import { PageVersionsOverlay } from "../version";
 import { PagesVersionEditor } from "../version/editor";
@@ -191,6 +192,7 @@ export const PageRoot = observer(function PageRoot(props: TPageRootProps) {
           onCollaborationStateChange={setCollaborationState}
         />
       </div>
+      <PageCommentsController page={page} />
       <PageNavigationPaneRoot
         storeType={storeType}
         handleClose={handleCloseNavigationPane}

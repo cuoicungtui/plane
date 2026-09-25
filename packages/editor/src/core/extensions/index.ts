@@ -24,6 +24,7 @@ export * from "./extensions";
 export * from "./headings-list";
 export * from "./horizontal-rule";
 export * from "./keymap";
+export * from "./page-comments";
 export * from "./quote";
 export * from "./side-menu";
 export * from "./text-align";

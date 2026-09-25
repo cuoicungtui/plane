@@ -11,6 +11,7 @@ import type { TPageInstance } from "@/store/pages/base-page";
 // local imports
 import { PageNavigationPaneAssetsTabPanel } from "./assets";
 import { PageNavigationPaneBacklinksTabPanel } from "./backlinks";
+import { PageNavigationPaneCommentsTabPanel } from "./comments";
 import { PageNavigationPaneInfoTabPanel } from "./info/root";
 import { PageNavigationPaneOutlineTabPanel } from "./outline";
 import { Tabs } from "@plane/propel/tabs";
@@ -32,6 +33,7 @@ export function PageNavigationPaneTabPanelsRoot(props: Props) {
           {tab.key === "info" && <PageNavigationPaneInfoTabPanel page={page} versionHistory={versionHistory} />}
           {tab.key === "assets" && <PageNavigationPaneAssetsTabPanel page={page} />}
           {tab.key === "backlinks" && <PageNavigationPaneBacklinksTabPanel page={page} />}
+          {tab.key === "comments" && <PageNavigationPaneCommentsTabPanel page={page} />}
         </Tabs.Content>
       ))}
     </>

@@ -27,3 +27,5 @@ export * from "@/types";
 
 // additional exports
 export { TrailingNode } from "./core/extensions/trailing-node";
+export { PAGE_COMMENT_OPEN_EVENT, PAGE_COMMENT_REQUEST_EVENT } from "./core/extensions/page-comments";
+export type { TPageCommentAnchorEventDetail, TCommentedBlocks } from "./core/extensions/page-comments";

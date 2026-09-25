@@ -42,6 +42,34 @@ export type TPageBacklink = {
   updated_at: string;
 };
 
+export type TPageCommentAnchorType = "block" | "text" | "board_element";
+
+export type TPageComment = {
+  id: string;
+  page: string;
+  parent: string | null;
+  actor: string;
+  body: string;
+  anchor_type: TPageCommentAnchorType | "";
+  anchor_id: string;
+  anchor_board_id: string;
+  quote: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  edited_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TPageCommentCreatePayload = {
+  body: string;
+  parent?: string;
+  anchor_type?: TPageCommentAnchorType;
+  anchor_id?: string;
+  anchor_board_id?: string;
+  quote?: string;
+};
+
 export type TPageVerification = Pick<TPage, "verified_at" | "verified_by" | "verify_expires_at">;
 
 export type TPagePositionPayload = {

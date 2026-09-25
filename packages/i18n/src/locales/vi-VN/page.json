@@ -337,5 +337,40 @@
   "page_backlinks": {
     "unavailable": "Trang không truy cập được",
     "count": "{count} trang nhắc đến trang này"
+  },
+  "page_comments": {
+    "comment": "Bình luận",
+    "placeholder": "Thêm bình luận…",
+    "reply": "Trả lời",
+    "reply_placeholder": "Trả lời…",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "edit": "Sửa",
+    "delete": "Xóa",
+    "edited": "đã sửa",
+    "resolve": "Đánh dấu đã xử lý",
+    "reopen": "Mở lại",
+    "orphan": "Mất vị trí neo — nội dung mà bình luận này gắn vào đã bị xóa",
+    "error_title": "Không gửi được bình luận",
+    "error_message": "Có lỗi xảy ra, vui lòng thử lại.",
+    "filter": {
+      "open": "Đang mở",
+      "resolved": "Đã xử lý"
+    },
+    "anchor": {
+      "block": "Khối nội dung",
+      "text": "Đoạn văn bản đã chọn",
+      "board_element": "Phần tử bảng trắng"
+    },
+    "empty": {
+      "open": {
+        "title": "Chưa có bình luận nào",
+        "description": "Dùng nút bình luận trong menu của khối để bắt đầu thảo luận."
+      },
+      "resolved": {
+        "title": "Chưa có bình luận nào được xử lý",
+        "description": "Các luồng đã xử lý được giữ ở đây."
+      }
+    }
   }
 }

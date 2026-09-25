@@ -10,6 +10,8 @@ import type {
   TDocumentPayload,
   TPage,
   TPageBacklink,
+  TPageComment,
+  TPageCommentCreatePayload,
   TPagePositionPayload,
   TPagePositionResponse,
   TPageVerification,
@@ -182,6 +184,66 @@ export class ProjectPageService extends APIService {
 
   async fetchBacklinks(workspaceSlug: string, projectId: string, pageId: string): Promise<TPageBacklink[]> {
     return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/backlinks/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async fetchComments(workspaceSlug: string, projectId: string, pageId: string): Promise<TPageComment[]> {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async createComment(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    data: TPageCommentCreatePayload
+  ): Promise<TPageComment> {
+    return this.post(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/`, data)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async updateComment(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    commentId: string,
+    body: string
+  ): Promise<TPageComment> {
+    return this.patch(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/${commentId}/`, {
+      body,
+    })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async deleteComment(workspaceSlug: string, projectId: string, pageId: string, commentId: string): Promise<void> {
+    return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/${commentId}/`)
+      .then(() => undefined)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async setCommentResolved(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    commentId: string,
+    resolved: boolean
+  ): Promise<TPageComment> {
+    const url = `/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/${commentId}/resolve/`;
+    return (resolved ? this.post(url, {}) : this.delete(url))
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

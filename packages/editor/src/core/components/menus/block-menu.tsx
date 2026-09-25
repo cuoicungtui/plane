@@ -14,8 +14,10 @@ import {
   useInteractions,
   FloatingPortal,
 } from "@floating-ui/react";
+import type { NodeSelection } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import type { LucideIcon } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CopyIcon, TrashIcon } from "@plane/propel/icons";
 import type { ISvgIcons } from "@plane/propel/icons";
@@ -24,6 +26,9 @@ import { cn } from "@plane/utils";
 import { CORE_EXTENSIONS } from "@/constants/extension";
 // types
 import type { IEditorProps } from "@/types";
+// extensions
+import { PAGE_COMMENT_REQUEST_EVENT } from "@/extensions/page-comments";
+import type { TPageCommentAnchorEventDetail } from "@/extensions/page-comments";
 // components
 import { getNodeOptions } from "./block-menu-options";
 
@@ -199,6 +204,22 @@ export function BlockMenu(props: Props) {
             console.error(error.message);
           }
         }
+      },
+    },
+    {
+      icon: MessageSquare,
+      key: "comment",
+      label: "Comment",
+      onClick: (_e) => {
+        const { selection } = editor.state;
+        const node = (selection as NodeSelection).node ?? selection.$from.parent;
+        const anchorId = node?.attrs?.id as string | undefined;
+        if (!anchorId) return;
+        window.dispatchEvent(
+          new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
+            detail: { anchorType: "block", anchorId, quote: node.textContent.slice(0, 200) },
+          })
+        );
       },
     },
     ...getNodeOptions(editor),

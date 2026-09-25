@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-export type TPageNavigationPaneTab = "outline" | "info" | "assets" | "backlinks";
+export type TPageNavigationPaneTab = "outline" | "info" | "assets" | "backlinks" | "comments";
 
 export const PAGE_NAVIGATION_PANE_TABS_LIST: Record<
   TPageNavigationPaneTab,
@@ -29,6 +29,10 @@ export const PAGE_NAVIGATION_PANE_TABS_LIST: Record<
     key: "backlinks",
     i18n_label: "page_navigation_pane.tabs.backlinks.label",
   },
+  comments: {
+    key: "comments",
+    i18n_label: "page_navigation_pane.tabs.comments.label",
+  },
 };
 
 export const ORDERED_PAGE_NAVIGATION_TABS_LIST: {
@@ -39,4 +43,5 @@ export const ORDERED_PAGE_NAVIGATION_TABS_LIST: {
   PAGE_NAVIGATION_PANE_TABS_LIST.info,
   PAGE_NAVIGATION_PANE_TABS_LIST.assets,
   PAGE_NAVIGATION_PANE_TABS_LIST.backlinks,
+  PAGE_NAVIGATION_PANE_TABS_LIST.comments,
 ];

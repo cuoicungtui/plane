@@ -532,3 +532,28 @@ span[data-name][data-type="emoji"] img {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* page comments */
+.ProseMirror .has-page-comment {
+  position: relative;
+  background-color: rgb(250 204 21 / 0.12);
+  box-shadow: -3px 0 0 0 rgb(250 204 21 / 0.7);
+}
+.ProseMirror .has-page-comment::after {
+  content: attr(data-comment-count);
+  position: absolute;
+  top: 0;
+  right: -19px;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: rgb(250 204 21);
+  color: rgb(63 46 0);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+}
