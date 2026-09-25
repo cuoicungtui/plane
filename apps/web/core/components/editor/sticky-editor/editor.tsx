@@ -21,6 +21,11 @@ import { useParseEditorContent } from "@/hooks/use-parse-editor-content";
 import { useEditorFlagging } from "@/hooks/use-editor-flagging";
 import { StickyEditorToolbar } from "./toolbar";
 
+// Stable reference: `useEditor` recreates the whole Tiptap instance whenever
+// `extendedEditorProps` changes identity, so an inline `{}` would rebuild the editor
+// (losing focus and typed text) on every render.
+const EMPTY_EXTENDED_EDITOR_PROPS = {};
+
 interface StickyEditorWrapperProps extends Omit<
   Omit<ILiteTextEditorProps, "extendedEditorProps">,
   "disabledExtensions" | "editable" | "flaggedExtensions" | "fileHandler" | "mentionHandler" | "getEditorMetaData"
@@ -40,6 +45,10 @@ interface StickyEditorWrapperProps extends Omit<
   parentClassName?: string;
   handleColorChange: (data: Partial<TSticky>) => Promise<void>;
   handleDelete: () => void;
+}
+
+function isMutableRefObject<T>(ref: React.ForwardedRef<T>): ref is React.MutableRefObject<T | null> {
+  return !!ref && typeof ref === "object" && "current" in ref;
 }
 
 export const StickyEditor = React.forwardRef(function StickyEditor(
@@ -74,9 +83,6 @@ export const StickyEditor = React.forwardRef(function StickyEditor(
   });
   // editor config
   const { getEditorFileHandlers } = useEditorConfig();
-  function isMutableRefObject<T>(ref: React.ForwardedRef<T>): ref is React.MutableRefObject<T | null> {
-    return !!ref && typeof ref === "object" && "current" in ref;
-  }
   // derived values
   const editorRef = isMutableRefObject<EditorRefApi>(ref) ? ref.current : null;
 
@@ -102,7 +108,7 @@ export const StickyEditor = React.forwardRef(function StickyEditor(
         mentionHandler={{
           renderComponent: () => <></>,
         }}
-        extendedEditorProps={{}}
+        extendedEditorProps={EMPTY_EXTENDED_EDITOR_PROPS}
         containerClassName={cn(containerClassName, "relative")}
         {...rest}
       />

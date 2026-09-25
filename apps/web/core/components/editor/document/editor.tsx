@@ -18,6 +18,11 @@ import { useEditorFlagging } from "@/hooks/use-editor-flagging";
 // local imports
 import { EditorMentionsRoot } from "../embeds/mentions";
 
+// Stable reference: `useEditor` recreates the whole Tiptap instance whenever
+// `extendedEditorProps` changes identity, so an inline `{}` would rebuild the editor
+// (losing focus and typed text) on every render.
+const EMPTY_EXTENDED_EDITOR_PROPS = {};
+
 type DocumentEditorWrapperProps = MakeOptional<
   Omit<IDocumentEditorProps, "fileHandler" | "mentionHandler" | "user" | "extendedEditorProps">,
   "disabledExtensions" | "editable" | "flaggedExtensions" | "getEditorMetaData"
@@ -95,7 +100,7 @@ export const DocumentEditor = forwardRef(function DocumentEditor(
         renderComponent: EditorMentionsRoot,
         getMentionedEntityDetails: (id: string) => ({ display_name: getUserDetails(id)?.display_name ?? "" }),
       }}
-      extendedEditorProps={extendedEditorProps ?? {}}
+      extendedEditorProps={extendedEditorProps ?? EMPTY_EXTENDED_EDITOR_PROPS}
       {...rest}
       containerClassName={cn("relative pb-3 pl-3", containerClassName)}
     />

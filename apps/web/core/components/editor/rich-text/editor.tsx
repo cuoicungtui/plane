@@ -19,6 +19,11 @@ import { useParseEditorContent } from "@/hooks/use-parse-editor-content";
 // plane web hooks
 import { useEditorFlagging } from "@/hooks/use-editor-flagging";
 
+// Stable reference: `useEditor` recreates the whole Tiptap instance whenever
+// `extendedEditorProps` changes identity, so an inline `{}` would rebuild the editor
+// (losing focus and typed text) on every render.
+const EMPTY_EXTENDED_EDITOR_PROPS = {};
+
 type RichTextEditorWrapperProps = MakeOptional<
   Omit<IRichTextEditorProps, "fileHandler" | "mentionHandler" | "extendedEditorProps">,
   "disabledExtensions" | "editable" | "flaggedExtensions" | "getEditorMetaData"
@@ -96,7 +101,7 @@ export const RichTextEditor = forwardRef(function RichTextEditor(
           display_name: getUserDetails(id)?.display_name ?? "",
         }),
       }}
-      extendedEditorProps={{}}
+      extendedEditorProps={EMPTY_EXTENDED_EDITOR_PROPS}
       {...rest}
       containerClassName={cn("relative pb-3 pl-3", containerClassName)}
     />
