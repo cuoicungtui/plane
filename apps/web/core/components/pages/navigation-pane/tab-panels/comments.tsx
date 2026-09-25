@@ -207,11 +207,15 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
             onEdit={(commentId, body) =>
               run(() => pageCommentService.updateComment(workspaceSlug, projectId, pageId, commentId, body))
             }
-            onDelete={(commentId) =>
-              run(() => pageCommentService.deleteComment(workspaceSlug, projectId, pageId, commentId)).catch(
-                () => undefined
-              )
-            }
+            onDelete={async (commentId) => {
+              const isTextRoot = thread.root.id === commentId && thread.root.anchor_type === "text";
+              try {
+                await run(() => pageCommentService.deleteComment(workspaceSlug, projectId, pageId, commentId));
+                if (isTextRoot) editorRef?.removeCommentMark(thread.root.anchor_id);
+              } catch {
+                // run() already reported the error
+              }
+            }}
             onToggleResolved={(threadId, resolved) =>
               run(() =>
                 pageCommentService.setCommentResolved(workspaceSlug, projectId, pageId, threadId, resolved)
