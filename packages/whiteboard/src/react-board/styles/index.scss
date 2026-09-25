@@ -6,6 +6,9 @@
   height: 100%;
   position: relative;
   overflow: hidden;
+  // hideScrollbar makes Plait oversize .viewport-container by 20px; unlike `hidden`, `clip` creates no scroll
+  // container, so scrollLeft/scrollTop stay 0 and selection frames stay aligned with the shapes.
+  overflow: clip;
   foreignObject {
     outline: none;
   }
