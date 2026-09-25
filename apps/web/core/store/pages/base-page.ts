@@ -71,6 +71,8 @@ export type TBasePageServices = {
   }>;
   restore: () => Promise<void>;
   duplicate: () => Promise<TPage>;
+  /** Called after archive, restore and duplicate, which also change other pages in the tree. */
+  onHierarchyChange?: () => void;
 };
 
 export type TPageInstance = TBasePage &
@@ -102,6 +104,8 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
   created_at: Date | undefined;
   updated_at: Date | undefined;
   deleted_at: Date | undefined;
+  parent: string | null | undefined;
+  sort_order: number | undefined;
   // helpers
   oldName: string = "";
   // services
@@ -140,6 +144,8 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
     this.updated_at = page?.updated_at || undefined;
     this.oldName = page?.name || "";
     this.deleted_at = page?.deleted_at || undefined;
+    this.parent = page?.parent ?? null;
+    this.sort_order = page?.sort_order;
 
     makeObservable(this, {
       // loaders
@@ -164,6 +170,8 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       created_at: observable.ref,
       updated_at: observable.ref,
       deleted_at: observable.ref,
+      parent: observable.ref,
+      sort_order: observable.ref,
       isSyncingWithServer: observable.ref,
       // helpers
       oldName: observable.ref,
@@ -240,6 +248,8 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       created_at: this.created_at,
       updated_at: this.updated_at,
       deleted_at: this.deleted_at,
+      parent: this.parent,
+      sort_order: this.sort_order,
       ...this.asJSONExtended,
     };
   }
@@ -420,6 +430,7 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
           this.archived_at = response.archived_at;
         });
       }
+      this.services.onHierarchyChange?.();
     } catch (error) {
       console.error(error);
       runInAction(() => {
@@ -442,6 +453,7 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       if (shouldSync) {
         await this.services.restore();
       }
+      this.services.onHierarchyChange?.();
     } catch (error) {
       console.error(error);
       runInAction(() => {
@@ -532,7 +544,11 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
   /**
    * @description duplicate the page
    */
-  duplicate = async () => await this.services.duplicate();
+  duplicate = async () => {
+    const duplicatedPage = await this.services.duplicate();
+    this.services.onHierarchyChange?.();
+    return duplicatedPage;
+  };
 
   /**
    * @description mutate multiple properties at once

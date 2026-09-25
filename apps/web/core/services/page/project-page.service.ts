@@ -6,7 +6,7 @@
 
 // types
 import { API_BASE_URL } from "@plane/constants";
-import type { TDocumentPayload, TPage } from "@plane/types";
+import type { TDocumentPayload, TPage, TPagePositionPayload, TPagePositionResponse } from "@plane/types";
 // helpers
 // services
 import { APIService } from "@/services/api.service";
@@ -22,7 +22,9 @@ export class ProjectPageService extends APIService {
   }
 
   async fetchAll(workspaceSlug: string, projectId: string): Promise<TPage[]> {
-    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/`)
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/`, {
+      params: { include_children: true },
+    })
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;
@@ -171,6 +173,19 @@ export class ProjectPageService extends APIService {
       .then((response) => response?.data)
       .catch((error) => {
         throw error;
+      });
+  }
+
+  async updatePosition(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    data: TPagePositionPayload
+  ): Promise<TPagePositionResponse> {
+    return this.post(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/position/`, data)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
       });
   }
 

@@ -12,6 +12,7 @@ import { EUserPermissions } from "@plane/constants";
 import type { TPage, TPageFilters, TPageNavigationTabs } from "@plane/types";
 import { EUserProjectRoles } from "@plane/types";
 // helpers
+import type { TPageTreeInput } from "@plane/utils";
 import { filterPagesByPageType, getPageName, orderPages, shouldFilterPage } from "@plane/utils";
 // plane web constants
 // plane web store
@@ -47,6 +48,7 @@ export interface IProjectPageStore {
   getCurrentProjectPageIds: (projectId: string) => string[];
   getCurrentProjectFilteredPageIdsByTab: (pageType: TPageNavigationTabs) => string[] | undefined;
   getPageById: (pageId: string) => TProjectPage | undefined;
+  getProjectPageTreeInput: (projectId: string) => TPageTreeInput[];
   updateFilters: <T extends keyof TPageFilters>(filterKey: T, filterValue: TPageFilters[T]) => void;
   clearAllFilters: () => void;
   // actions
@@ -55,6 +57,7 @@ export interface IProjectPageStore {
     projectId: string,
     pageType?: TPageNavigationTabs
   ) => Promise<TPage[] | undefined>;
+  refreshPageTree: (workspaceSlug: string, projectId: string) => Promise<void>;
   fetchPageDetails: (
     workspaceSlug: string,
     projectId: string,
@@ -95,6 +98,7 @@ export class ProjectPageStore implements IProjectPageStore {
       clearAllFilters: action,
       // actions
       fetchPagesList: action,
+      refreshPageTree: action,
       fetchPageDetails: action,
       createPage: action,
       removePage: action,
@@ -188,6 +192,20 @@ export class ProjectPageStore implements IProjectPageStore {
    */
   getPageById = computedFn((pageId: string) => this.data?.[pageId] || undefined);
 
+  /**
+   * @description pages of a project as input for `buildPageTree` (archived pages are left out)
+   * @param {string} projectId
+   */
+  getProjectPageTreeInput = computedFn((projectId: string): TPageTreeInput[] => {
+    if (!projectId) return [];
+    const input: TPageTreeInput[] = [];
+    for (const page of Object.values(this?.data || {})) {
+      if (!page.id || page.archived_at || !page.project_ids?.includes(projectId)) continue;
+      input.push({ id: page.id, parent: page.parent, sort_order: page.sort_order, created_at: page.created_at });
+    }
+    return input;
+  });
+
   updateFilters = <T extends keyof TPageFilters>(filterKey: T, filterValue: TPageFilters[T]) => {
     runInAction(() => {
       set(this.filters, [filterKey], filterValue);
@@ -217,20 +235,7 @@ export class ProjectPageStore implements IProjectPageStore {
 
       const pages = await this.service.fetchAll(workspaceSlug, projectId);
       runInAction(() => {
-        for (const page of pages) {
-          if (page?.id) {
-            const existingPage = this.getPageById(page.id);
-            if (existingPage) {
-              // If page already exists, update all fields except name
-
-              const { name, ...otherFields } = page;
-              existingPage.mutateProperties(otherFields, false);
-            } else {
-              // If new page, create a new instance with all data
-              set(this.data, [page.id], new ProjectPage(this.store, page));
-            }
-          }
-        }
+        this.upsertPages(pages);
         this.loader = undefined;
       });
 
@@ -244,6 +249,36 @@ export class ProjectPageStore implements IProjectPageStore {
         };
       });
       throw error;
+    }
+  };
+
+  private upsertPages = (pages: TPage[]) => {
+    for (const page of pages) {
+      if (page?.id) {
+        const existingPage = this.getPageById(page.id);
+        if (existingPage) {
+          // If page already exists, update all fields except name
+
+          const { name, ...otherFields } = page;
+          existingPage.mutateProperties(otherFields, false);
+        } else {
+          // If new page, create a new instance with all data
+          set(this.data, [page.id], new ProjectPage(this.store, page));
+        }
+      }
+    }
+  };
+
+  /**
+   * @description reload the pages of a project without touching the loader, after an action that moves other
+   * pages too (delete, duplicate, archive, restore)
+   */
+  refreshPageTree = async (workspaceSlug: string, projectId: string) => {
+    try {
+      const pages = await this.service.fetchAll(workspaceSlug, projectId);
+      runInAction(() => this.upsertPages(pages));
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -337,6 +372,7 @@ export class ProjectPageStore implements IProjectPageStore {
         unset(this.data, [pageId]);
         if (this.rootStore.favorite.entityMap[pageId]) this.rootStore.favorite.removeFavoriteFromStore(pageId);
       });
+      void this.refreshPageTree(workspaceSlug, projectId);
     } catch (error) {
       runInAction(() => {
         this.loader = undefined;

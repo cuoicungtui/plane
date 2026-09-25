@@ -59,6 +59,10 @@ export class ProjectPage extends BasePage implements TProjectPage {
         if (!workspaceSlug || !projectId || !page.id) throw new Error("Missing required fields.");
         return await projectPageService.duplicate(workspaceSlug, projectId, page.id);
       },
+      onHierarchyChange: () => {
+        if (!workspaceSlug || !projectId) return;
+        void store.projectPages.refreshPageTree(workspaceSlug, projectId);
+      },
     });
     makeObservable(this, {
       // computed
