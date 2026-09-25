@@ -8,6 +8,9 @@ import { getAttributes } from "@tiptap/core";
 import type { MarkType } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
+// A listener that calls preventDefault() takes over navigation, so same-origin links can use the app router instead of reloading the page.
+export const INTERNAL_LINK_EVENT = "plane:internal-link";
+
 type ClickHandlerOptions = {
   type: MarkType;
 };
@@ -48,6 +51,18 @@ export function clickHandler(options: ClickHandlerOptions): Plugin {
           // to keep the policy consistent (GHSA-v2vv-7wq3-8w2j).
           if (/^(javascript|data|vbscript|file|about):/i.test(href)) {
             return false;
+          }
+
+          const isPlainClick = !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+          const url = new URL(href, window.location.href);
+          if (isPlainClick && url.origin === window.location.origin) {
+            const handled = !window.dispatchEvent(
+              new CustomEvent(INTERNAL_LINK_EVENT, {
+                cancelable: true,
+                detail: { path: `${url.pathname}${url.search}${url.hash}` },
+              })
+            );
+            if (handled) return true;
           }
 
           window.open(href, target);

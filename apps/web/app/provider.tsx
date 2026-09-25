@@ -13,6 +13,8 @@ import { TranslationProvider } from "@plane/i18n";
 import { Toast } from "@plane/propel/toast";
 // helpers
 import { resolveGeneralTheme } from "@plane/utils";
+// components
+import { EditorInternalLinkHandler } from "@/components/editor/internal-link-handler";
 // mobx store provider
 import { StoreProvider } from "@/lib/store-context";
 
@@ -42,6 +44,7 @@ export function AppProvider(props: IAppProvider) {
     <StoreProvider>
       <>
         <AppProgressBar />
+        <EditorInternalLinkHandler />
         <TranslationProvider>
           <Toast theme={resolveGeneralTheme(resolvedTheme)} />
           <StoreWrapper>
