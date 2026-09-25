@@ -25,6 +25,8 @@ import { BlockItemAction, HOVER_ONLY_CLASS } from "@/components/pages/list/block
 import { usePlatformOS } from "@/hooks/use-platform-os";
 import type { EPageStoreType } from "@/hooks/store";
 import { usePage, usePageStore } from "@/hooks/store";
+// local imports
+import { PagePrivateBadge } from "./private-badge";
 
 export const PAGE_TREE_DRAG_TYPE = "wiki-page";
 const INDENT_PER_LEVEL = 20;
@@ -198,6 +200,7 @@ export const PageTreeRow = observer(function PageTreeRow(props: Props) {
             )
           }
           title={getPageName(name)}
+          appendTitleElement={<PagePrivateBadge access={page.access} isMobile={isMobile} />}
           itemLink={getRedirectionLink()}
           actionableItems={
             <>

@@ -304,6 +304,7 @@
     "owned_by": "Owned by",
     "public": "Public",
     "private": "Private",
+    "private_hint": "Only you can see this page",
     "created_on": "Created on {date}",
     "updated": "Updated {time}"
   },

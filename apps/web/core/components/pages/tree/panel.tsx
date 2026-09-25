@@ -20,6 +20,7 @@ import type { EPageStoreType } from "@/hooks/store";
 import { usePage, usePageStore } from "@/hooks/store";
 import { getValueFromLocalStorage, setValueIntoLocalStorage } from "@/hooks/use-local-storage";
 // local imports
+import { PagePrivateBadge } from "./private-badge";
 import { useAddChildPage } from "./use-add-child-page";
 import { usePageTreeExpansion } from "./use-tree-expansion";
 
@@ -81,6 +82,7 @@ const PanelRow = observer(function PanelRow({ row, storeType, isActive, onToggle
           )}
         </span>
         <span className="truncate">{getPageName(page.name)}</span>
+        <PagePrivateBadge access={page.access} />
       </Link>
       {canAddChild && (
         <Tooltip tooltipContent={t("page_tree.add_child")}>

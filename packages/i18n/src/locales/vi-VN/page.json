@@ -304,6 +304,7 @@
     "owned_by": "Chủ sở hữu",
     "public": "Công khai",
     "private": "Riêng tư",
+    "private_hint": "Chỉ mình bạn thấy trang này",
     "created_on": "Tạo ngày {date}",
     "updated": "Sửa {time}"
   },
