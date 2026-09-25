@@ -1,0 +1,53 @@
+{
+  "name": "@plane/whiteboard",
+  "version": "1.4.2",
+  "private": true,
+  "description": "Plait-based whiteboard canvas for Page embeds. Source-only: compiled by the consuming app's Vite build",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./asset-ids": "./src/asset-ids.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "check:lint": "oxlint --max-warnings=0 .",
+    "check:types": "tsc --noEmit",
+    "check:format": "oxfmt --check .",
+    "fix:lint": "oxlint --fix .",
+    "fix:format": "oxfmt .",
+    "clean": "rm -rf .turbo && rm -rf node_modules"
+  },
+  "dependencies": {
+    "@plait/common": "catalog:",
+    "@plait/core": "catalog:",
+    "@plait/draw": "catalog:",
+    "@plait/layouts": "catalog:",
+    "@plait/mind": "catalog:",
+    "@plait/text-plugins": "catalog:",
+    "ahooks": "catalog:",
+    "classnames": "catalog:",
+    "immer": "catalog:",
+    "is-hotkey": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "roughjs": "catalog:",
+    "slate": "catalog:",
+    "slate-dom": "catalog:",
+    "slate-history": "catalog:",
+    "slate-react": "catalog:"
+  },
+  "devDependencies": {
+    "@plane/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "happy-dom": "catalog:",
+    "sass": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -4,14 +4,17 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { PenTool } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
 import type { IEditorPropsExtended } from "@plane/editor";
+import { useTranslation } from "@plane/i18n";
+import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 
 import { PageWhiteboardEmbed, TaskItemMeta, TaskItemState } from "@/components/pages/editor/embeds";
 import { useProjectState } from "@/hooks/store/use-project-state";
 import { IssueService } from "@/services/issue";
-import { PageWhiteboardService } from "@/services/page";
+import { PageWhiteboardService, type TPageWhiteboard } from "@/services/page";
 import type { TPageInstance } from "@/store/pages/base-page";
 import type { EPageStoreType } from "@/hooks/store";
 
@@ -37,6 +40,11 @@ export const useExtendedEditorProps = (
 ): TExtendedEditorExtensionsConfig => {
   const { workspaceSlug, page, projectId } = params;
   const { getProjectStates } = useProjectState();
+  // `t` is a new function on every render; read through a ref so it stays out of the memo's
+  // dependencies (a changing memo rebuilds the editor extensions).
+  const { t } = useTranslation();
+  const translateRef = useRef(t);
+  translateRef.current = t;
 
   return useMemo(() => {
     // The editor package intentionally exposes slash options as `unknown` to
@@ -50,18 +58,28 @@ export const useExtendedEditorProps = (
         commandKey: "whiteboard",
         key: "page-whiteboard",
         title: "Whiteboard",
-        description: "Insert an Excalidraw whiteboard",
-        searchTerms: ["board", "draw", "canvas", "excalidraw"],
+        description: "Insert a whiteboard",
+        searchTerms: ["board", "draw", "canvas", "diagram", "mind map"],
         icon: <PenTool className="size-3.5" />,
         section: "general",
         pushAfter: "image",
         command: async ({ editor, range }: any) => {
           if (!page.id) return;
-          const board = await whiteboardService.create(workspaceSlug, currentProjectId, page.id, {
-            creation_key: crypto.randomUUID(),
-            scene: { elements: [], appState: {}, files: {} },
-            asset_ids: [],
-          });
+          let board: TPageWhiteboard;
+          try {
+            // The server stores an empty Plait board when no scene is sent.
+            board = await whiteboardService.create(workspaceSlug, currentProjectId, page.id, {
+              creation_key: uuidv4(),
+            });
+          } catch {
+            // Leave the typed "/whiteboard" in place so the person can retry.
+            setToast({
+              type: TOAST_TYPE.ERROR,
+              title: translateRef.current("toast.error"),
+              message: translateRef.current("page_whiteboard.create_error"),
+            });
+            return;
+          }
           editor
             .chain()
             .focus()
@@ -69,7 +87,7 @@ export const useExtendedEditorProps = (
             .insertContent({
               type: "whiteboard-embed-component",
               attrs: {
-                id: crypto.randomUUID(),
+                id: uuidv4(),
                 board_identifier: board.id,
                 page_identifier: page.id,
                 workspace_identifier: workspaceSlug,

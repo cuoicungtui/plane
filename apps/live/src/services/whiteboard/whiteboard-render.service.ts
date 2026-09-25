@@ -73,10 +73,12 @@ const parseCookiesForUrls = (cookieHeader: string, urls: string[]) => {
 
 /**
  * Renders a whiteboard's real drawn content to a PNG data URI by navigating a
- * headless browser to apps/web's `/whiteboard-export/...` route (which mounts
- * the actual Excalidraw renderer) and screenshotting it. Returns null on any
- * failure so callers can fall back to the text placeholder — a missing
- * whiteboard image must never fail the whole PDF export.
+ * headless browser to apps/web's `/whiteboard-export/...` route, which draws the
+ * board with the same Plait renderer the editor uses and publishes the PNG it made
+ * as `window.__EXPORT_IMAGE__`. Returns null on any failure — and when there is
+ * nothing to draw (an empty board, or an old Excalidraw board) — so callers can
+ * fall back to the text placeholder: a missing whiteboard image must never fail
+ * the whole PDF export.
  */
 export const renderWhiteboardImage = async (params: WhiteboardRenderParams): Promise<string | null> => {
   if (!env.WEB_BASE_URL) return null;
@@ -102,8 +104,8 @@ export const renderWhiteboardImage = async (params: WhiteboardRenderParams): Pro
     const failed = await page.evaluate(() => (globalThis as any).__EXPORT_ERROR__ === true);
     if (failed) return null;
 
-    const buffer = await page.locator(".excalidraw").first().screenshot({ type: "png", timeout: RENDER_TIMEOUT_MS });
-    return `data:image/png;base64,${buffer.toString("base64")}`;
+    const image = await page.evaluate(() => (globalThis as any).__EXPORT_IMAGE__ as unknown);
+    return typeof image === "string" && image.startsWith("data:image/png") ? image : null;
   } catch (error) {
     logger.warn("PDF_EXPORT: Whiteboard render failed", { boardId, error: String(error) });
     return null;

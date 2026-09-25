@@ -111,5 +111,48 @@
       "success_message": "Đã xóa trang khỏi bộ sưu tập.",
       "error_message": "Không thể xóa trang khỏi bộ sưu tập. Vui lòng thử lại."
     }
+  },
+  "page_whiteboard": {
+    "title": "Bảng trắng",
+    "loading": "Đang tải bảng trắng…",
+    "load_error": "Không thể tải bảng trắng này.",
+    "create_error": "Không thể thêm bảng trắng. Vui lòng thử lại.",
+    "belongs_to_other_page": "Bảng trắng này thuộc về một trang khác và không thể sao chép sang đây.",
+    "unsupported_engine": "Bảng trắng này được tạo bằng công cụ vẽ cũ không còn được hỗ trợ, nên không thể hiển thị hay chỉnh sửa.",
+    "conflict_error": "Bảng trắng này đã được thay đổi ở nơi khác. Hãy tải lại trước khi chỉnh sửa tiếp.",
+    "save_error": "Không thể lưu bảng trắng. Bảng sẽ được lưu lại ở lần chỉnh sửa tiếp theo.",
+    "reload": "Tải lại",
+    "saving": "Đang lưu…",
+    "saved": "Đã lưu",
+    "fullscreen": "Toàn màn hình",
+    "exit_fullscreen": "Thoát toàn màn hình",
+    "resize": "Đổi kích thước bảng trắng",
+    "toolbar": "Công cụ bảng trắng",
+    "tools": {
+      "select": "Chọn",
+      "hand": "Kéo bảng",
+      "mind": "Sơ đồ tư duy",
+      "text": "Văn bản",
+      "rectangle": "Hình chữ nhật",
+      "round_rectangle": "Hình chữ nhật bo góc",
+      "ellipse": "Hình elip",
+      "diamond": "Hình thoi",
+      "triangle": "Hình tam giác",
+      "arrow": "Mũi tên",
+      "elbow_arrow": "Mũi tên gấp khúc",
+      "image": "Thêm ảnh"
+    },
+    "image": {
+      "uploading": "Đang tải ảnh lên…",
+      "upload_failed": "Không thể tải ảnh lên. Vui lòng thử lại.",
+      "unsupported": "Không thể thêm tệp này. Hãy dùng ảnh PNG, JPEG, GIF hoặc WebP.",
+      "too_large": "Ảnh này quá lớn để tải lên."
+    },
+    "labels": {
+      "text": "Văn bản",
+      "line_text": "Văn bản",
+      "mind_central": "Chủ đề trung tâm",
+      "mind_summary": "Tóm tắt"
+    }
   }
 }

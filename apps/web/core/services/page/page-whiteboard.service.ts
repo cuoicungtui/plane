@@ -6,11 +6,14 @@ import { API_BASE_URL } from "@plane/constants";
 
 import { APIService } from "@/services/api.service";
 
+/** "excalidraw" rows predate the Plait board; they stay readable but are shown as unsupported. */
+export type TPageWhiteboardEngine = "plait" | "excalidraw";
+
 export type TPageWhiteboard = {
   id: string;
   page: string;
   workspace: string;
-  engine: "excalidraw";
+  engine: TPageWhiteboardEngine;
   schema_version: number;
   scene: Record<string, unknown>;
   asset_ids: string[];
@@ -20,9 +23,10 @@ export type TPageWhiteboard = {
   updated_at: string;
 };
 
-export type TCreatePageWhiteboardPayload = Pick<TPageWhiteboard, "scene" | "asset_ids"> & {
+/** Without `scene` the server stores an empty board (`engine` "plait", schema 2). */
+export type TCreatePageWhiteboardPayload = Partial<Pick<TPageWhiteboard, "scene" | "asset_ids">> & {
   creation_key: string;
-  engine?: "excalidraw";
+  engine?: "plait";
   schema_version?: number;
 };
 
@@ -41,11 +45,15 @@ export class PageWhiteboardService extends APIService {
   }
 
   async create(workspaceSlug: string, projectId: string, pageId: string, payload: TCreatePageWhiteboardPayload) {
-    return this.post(this.url(workspaceSlug, projectId, pageId), payload).then((response) => response.data as TPageWhiteboard);
+    return this.post(this.url(workspaceSlug, projectId, pageId), payload).then(
+      (response) => response.data as TPageWhiteboard
+    );
   }
 
   async retrieve(workspaceSlug: string, projectId: string, pageId: string, boardId: string) {
-    return this.get(this.url(workspaceSlug, projectId, pageId, boardId)).then((response) => response.data as TPageWhiteboard);
+    return this.get(this.url(workspaceSlug, projectId, pageId, boardId)).then(
+      (response) => response.data as TPageWhiteboard
+    );
   }
 
   async update(

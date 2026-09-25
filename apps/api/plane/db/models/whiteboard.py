@@ -7,17 +7,25 @@ from .base import BaseModel
 
 
 class PageWhiteboard(BaseModel):
-    """A Page-owned Excalidraw scene.
+    """A Page-owned Plait scene.
 
     The Page document only stores this model's ID. Keeping the scene here
     prevents large canvas payloads, data URLs and temporary asset URLs from
     entering the Page Yjs/HTML persistence pipeline.
+
+    Rows created before the Plait migration have ``engine="excalidraw"`` and
+    ``schema_version=1``. They are kept untouched and are read-only: the API
+    still returns them, but rejects writes to them.
     """
+
+    ENGINE_PLAIT = "plait"
+    ENGINE_EXCALIDRAW = "excalidraw"  # legacy, read-only
+    CURRENT_SCHEMA_VERSION = 2
 
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="page_whiteboards")
     page = models.ForeignKey("db.Page", on_delete=models.CASCADE, related_name="whiteboards")
-    engine = models.CharField(max_length=32, default="excalidraw")
-    schema_version = models.PositiveSmallIntegerField(default=1)
+    engine = models.CharField(max_length=32, default=ENGINE_PLAIT)
+    schema_version = models.PositiveSmallIntegerField(default=CURRENT_SCHEMA_VERSION)
     scene = models.JSONField(default=dict)
     asset_ids = models.JSONField(default=list, blank=True)
     revision = models.PositiveIntegerField(default=1)
@@ -39,10 +47,11 @@ class PageWhiteboard(BaseModel):
 
 
 class WorkspaceWhiteboardLibrary(BaseModel):
-    """The shared Excalidraw Library for a workspace.
+    """The shared shape library for a workspace.
 
-    One row per workspace: every whiteboard embed in that workspace loads
-    and contributes to this same set of library items.
+    One row per workspace. The Plait whiteboard UI does not read or write it
+    (the Excalidraw library format is not portable); the table and endpoint
+    stay in place so existing data is kept until the template feature lands.
     """
 
     workspace = models.OneToOneField(

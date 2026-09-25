@@ -29,6 +29,12 @@ catalog:
   "@hocuspocus/server": "2.15.2"
   "@hocuspocus/transformer": "2.15.2"
   "@hypermod/utils": "^0.7.1"
+  "@plait/common": "0.94.1"
+  "@plait/core": "0.94.1"
+  "@plait/draw": "0.94.1"
+  "@plait/layouts": "0.94.1"
+  "@plait/mind": "0.94.1"
+  "@plait/text-plugins": "0.94.1"
   "@popperjs/core": "^2.11.8"
   "@radix-ui/react-scroll-area": "^1.2.3"
   "@react-pdf/renderer": "^4.3.0"
@@ -89,12 +95,14 @@ catalog:
   "@types/sanitize-html": "2.16.0"
   "@types/ws": "^8.18.1"
   "@vitest/coverage-v8": "^4.1.8"
+  "ahooks": "3.8.0"
   "ast-types": "0.14.2"
   "autoprefixer": "^10.4.19"
   "axios": "1.18.1"
   "buffer": "^6.0.3"
   "chroma-js": "^3.2.0"
   "class-variance-authority": "0.7.1"
+  "classnames": "2.5.1"
   "clsx": "^2.1.1"
   "cmdk": "^1.1.1"
   "comlink": "^4.4.1"
@@ -112,6 +120,7 @@ catalog:
   "file-type": "^21.3.1"
   "framer-motion": "^12.23.0"
   "frimousse": "^0.3.0"
+  "happy-dom": "20.14.5"
   "hast": "^1.0.0"
   "hast-util-to-mdast": "^10.1.2"
   "helmet": "^7.1.0"
@@ -120,8 +129,10 @@ catalog:
   "i18next": "25.10.9"
   "i18next-icu": "2.4.3"
   "i18next-resources-to-backend": "1.2.1"
+  "immer": "10.2.0"
   "ioredis": "5.7.0"
   "is-emoji-supported": "^0.0.5"
+  "is-hotkey": "0.2.0"
   "isbot": "^5.1.31"
   "jscodeshift": "^17.3.0"
   "jsx-dom-cjs": "^8.0.3"
@@ -162,9 +173,15 @@ catalog:
   "rehype-remark": "^10.0.1"
   "remark-gfm": "^4.0.1"
   "remark-stringify": "^11.0.0"
+  "roughjs": "4.6.6"
   "sanitize-html": "2.17.5"
+  "sass": "1.93.2"
   "serve": "14.2.5"
   "sharp": "^0.35.3"
+  "slate": "0.116.0"
+  "slate-dom": "0.116.0"
+  "slate-history": "0.115.0"
+  "slate-react": "0.116.0"
   "smooth-scroll-into-view-if-needed": "^2.0.2"
   "storybook": "10.4.6"
   "swr": "2.2.4"
@@ -242,6 +259,9 @@ overrides:
   "@opentelemetry/resources": 2.8.0
   "@opentelemetry/sdk-trace-base": 2.8.0
   morgan: 1.11.0
+  # @plait/core takes roughjs as ^4.5.2, so without this it can resolve to a different copy than
+  # the one @plane/whiteboard imports, and their RoughSVG types stop matching.
+  roughjs: "catalog:"
 
 allowBuilds:
   "@parcel/watcher": true

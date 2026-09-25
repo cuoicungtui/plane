@@ -21,8 +21,8 @@ export function EditorContentWrapper(props: Props) {
 
   // React's onFocus fires on focusin, which bubbles from every descendant —
   // including native-focusable elements a NodeView renders inside its own
-  // atom node (e.g. the whiteboard embed's Excalidraw canvas, which creates
-  // and focuses a <textarea> when its text tool is used). Without the target
+  // atom node (e.g. the whiteboard embed's board, whose text tool creates and
+  // focuses an editing element). Without the target
   // check, that bubbled focus event would run this handler and call
   // editor.chain().focus(), which re-focuses the ProseMirror root and yanks
   // focus straight back out of the NodeView's own content. Only react when

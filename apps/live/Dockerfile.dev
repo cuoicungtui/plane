@@ -3,7 +3,8 @@ FROM node:22-alpine
 RUN apk add --no-cache libc6-compat
 # See Dockerfile.live: Playwright's own Chromium download doesn't run on Alpine's
 # musl libc, so whiteboard PDF-export rendering uses Alpine's own chromium apk package.
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+# font-noto-cjk draws Chinese, Japanese and Korean text on a whiteboard (see Dockerfile.live).
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont font-noto-cjk
 ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 WORKDIR /app
 

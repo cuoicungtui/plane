@@ -111,5 +111,48 @@
       "success_message": "Page removed from collection.",
       "error_message": "Page could not be removed from the collection. Please try again."
     }
+  },
+  "page_whiteboard": {
+    "title": "Whiteboard",
+    "loading": "Loading whiteboard…",
+    "load_error": "Could not load this whiteboard.",
+    "create_error": "Could not add a whiteboard. Please try again.",
+    "belongs_to_other_page": "This whiteboard belongs to another page and cannot be copied here.",
+    "unsupported_engine": "This whiteboard was made with a drawing tool that is no longer supported, so it cannot be shown or edited.",
+    "conflict_error": "This whiteboard was changed somewhere else. Reload it before editing again.",
+    "save_error": "Could not save the whiteboard. It will be saved again the next time you make a change.",
+    "reload": "Reload",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "fullscreen": "Fullscreen",
+    "exit_fullscreen": "Exit fullscreen",
+    "resize": "Resize whiteboard",
+    "toolbar": "Whiteboard tools",
+    "tools": {
+      "select": "Select",
+      "hand": "Pan",
+      "mind": "Mind map",
+      "text": "Text",
+      "rectangle": "Rectangle",
+      "round_rectangle": "Rounded rectangle",
+      "ellipse": "Ellipse",
+      "diamond": "Diamond",
+      "triangle": "Triangle",
+      "arrow": "Arrow",
+      "elbow_arrow": "Elbow arrow",
+      "image": "Add image"
+    },
+    "image": {
+      "uploading": "Uploading image…",
+      "upload_failed": "Could not upload the image. Please try again.",
+      "unsupported": "This file cannot be added. Use a PNG, JPEG, GIF or WebP image.",
+      "too_large": "This image is too large to upload."
+    },
+    "labels": {
+      "text": "Text",
+      "line_text": "Text",
+      "mind_central": "Central topic",
+      "mind_summary": "Summary"
+    }
   }
 }

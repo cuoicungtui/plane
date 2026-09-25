@@ -32,7 +32,7 @@ def _page_for(workspace, user):
 class TestPageWhiteboardEndpoint:
     def test_creation_key_is_idempotent(self, session_client, workspace, create_user):
         project, page = _page_for(workspace, create_user)
-        payload = {"creation_key": str(uuid.uuid4()), "scene": {"elements": []}, "asset_ids": []}
+        payload = {"creation_key": str(uuid.uuid4()), "scene": {"children": []}, "asset_ids": []}
 
         first = session_client.post(_url(workspace.slug, project.id, page.id), payload, content_type="application/json")
         second = session_client.post(_url(workspace.slug, project.id, page.id), payload, content_type="application/json")
@@ -42,13 +42,96 @@ class TestPageWhiteboardEndpoint:
         assert first.json()["id"] == second.json()["id"]
         assert PageWhiteboard.objects.filter(page=page).count() == 1
 
-    def test_update_requires_matching_revision(self, session_client, workspace, create_user):
+    def test_created_board_is_plait_schema_v2(self, session_client, workspace, create_user):
         project, page = _page_for(workspace, create_user)
-        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"elements": []})
+
+        response = session_client.post(_url(workspace.slug, project.id, page.id), {}, content_type="application/json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        body = response.json()
+        assert body["engine"] == "plait"
+        assert body["schema_version"] == 2
+        assert body["scene"] == {"children": []}
+        assert body["revision"] == 1
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"engine": "excalidraw"},
+            {"schema_version": 1},
+            {"scene": {"elements": []}},
+            {"scene": {"children": [{"type": "geometry"}]}},
+            {"asset_ids": ["not-a-uuid"]},
+        ],
+    )
+    def test_create_rejects_invalid_payloads(self, session_client, workspace, create_user, payload):
+        project, page = _page_for(workspace, create_user)
+
+        response = session_client.post(_url(workspace.slug, project.id, page.id), payload, content_type="application/json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert PageWhiteboard.objects.filter(page=page).count() == 0
+
+    def test_update_saves_scene_and_bumps_revision(self, session_client, workspace, create_user):
+        project, page = _page_for(workspace, create_user)
+        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"children": []})
+        scene = {"children": [{"id": "n1", "type": "geometry"}], "viewport": {"zoom": 2}, "theme": {"themeColorMode": "default"}}
 
         response = session_client.patch(
             _url(workspace.slug, project.id, page.id, board.id),
-            {"expected_revision": 0, "scene": {"elements": [{"id": "late"}]}},
+            {"expected_revision": 1, "scene": scene},
+            content_type="application/json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        board.refresh_from_db()
+        assert board.revision == 2
+        assert board.scene == scene
+
+    def test_update_rejects_invalid_scene_and_engine_change(self, session_client, workspace, create_user):
+        project, page = _page_for(workspace, create_user)
+        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"children": []})
+        url = _url(workspace.slug, project.id, page.id, board.id)
+
+        bad_scene = session_client.patch(
+            url, {"expected_revision": 1, "scene": {"elements": []}}, content_type="application/json"
+        )
+        engine_change = session_client.patch(
+            url, {"expected_revision": 1, "engine": "excalidraw"}, content_type="application/json"
+        )
+
+        assert bad_scene.status_code == status.HTTP_400_BAD_REQUEST
+        assert engine_change.status_code == status.HTTP_400_BAD_REQUEST
+        board.refresh_from_db()
+        assert (board.revision, board.engine, board.scene) == (1, "plait", {"children": []})
+
+    def test_legacy_excalidraw_board_is_readable_but_read_only(self, session_client, workspace, create_user):
+        project, page = _page_for(workspace, create_user)
+        legacy_scene = {"elements": [{"id": "old"}], "files": {}}
+        board = PageWhiteboard.objects.create(
+            workspace=workspace, page=page, engine="excalidraw", schema_version=1, scene=legacy_scene
+        )
+        url = _url(workspace.slug, project.id, page.id, board.id)
+
+        read = session_client.get(url)
+        write = session_client.patch(
+            url, {"expected_revision": 1, "scene": {"children": []}}, content_type="application/json"
+        )
+
+        assert read.status_code == status.HTTP_200_OK
+        assert read.json()["engine"] == "excalidraw"
+        assert read.json()["scene"] == legacy_scene
+        assert write.status_code == status.HTTP_400_BAD_REQUEST
+        board.refresh_from_db()
+        assert (board.revision, board.engine, board.scene) == (1, "excalidraw", legacy_scene)
+
+    def test_update_requires_matching_revision(self, session_client, workspace, create_user):
+        project, page = _page_for(workspace, create_user)
+        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"children": []})
+
+        response = session_client.patch(
+            _url(workspace.slug, project.id, page.id, board.id),
+            {"expected_revision": 0, "scene": {"children": [{"id": "late"}]}},
             content_type="application/json",
         )
 
@@ -56,10 +139,10 @@ class TestPageWhiteboardEndpoint:
 
     def test_update_rejects_boolean_revision(self, session_client, workspace, create_user):
         project, page = _page_for(workspace, create_user)
-        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"elements": []})
+        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"children": []})
         response = session_client.patch(
             _url(workspace.slug, project.id, page.id, board.id),
-            {"expected_revision": True, "scene": {"elements": []}},
+            {"expected_revision": True, "scene": {"children": []}},
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -70,7 +153,7 @@ class TestPageWhiteboardEndpoint:
         project, page = _page_for(workspace, create_user)
         other = Project.objects.create(name="Other", identifier=f"OT{uuid.uuid4().hex[:6].upper()}", workspace=workspace)
         ProjectMember.objects.create(workspace=workspace, project=other, member=create_user, role=20)
-        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={})
+        board = PageWhiteboard.objects.create(workspace=workspace, page=page, scene={"children": []})
 
         response = session_client.get(_url(workspace.slug, other.id, page.id, board.id))
 
@@ -82,7 +165,18 @@ class TestPageWhiteboardEndpoint:
         board = PageWhiteboard.objects.create(
             workspace=workspace,
             page=page,
-            scene={"elements": [{"type": "image", "fileId": old_asset}]},
+            scene={
+                "children": [
+                    {"id": "img", "type": "image", "url": old_asset, "points": [[0, 0], [10, 10]]},
+                    # An image attached to a mind map node sits deeper in the scene.
+                    {
+                        "id": "mind",
+                        "type": "mindmap",
+                        "data": {"topic": {"children": [{"text": "Root"}]}, "image": {"url": old_asset, "width": 8, "height": 8}},
+                        "children": [],
+                    },
+                ]
+            },
             asset_ids=[old_asset],
         )
         page.description_html = (
@@ -106,7 +200,11 @@ class TestPageWhiteboardEndpoint:
         copied_board = PageWhiteboard.objects.get(page=copied_page)
         assert copied_board.id != board.id
         assert copied_board.asset_ids == [new_asset]
-        assert copied_board.scene["elements"][0]["fileId"] == new_asset
+        assert copied_board.engine == board.engine
+        assert copied_board.schema_version == board.schema_version
+        assert copied_board.scene["children"][0]["url"] == new_asset
+        assert copied_board.scene["children"][1]["data"]["image"]["url"] == new_asset
+        assert old_asset not in str(copied_board.scene)
         assert str(copied_board.id) in copied_page.description_html
         assert new_asset in str(copied_page.description_json)
         assert str(board.id) not in str(copied_page.description_json)

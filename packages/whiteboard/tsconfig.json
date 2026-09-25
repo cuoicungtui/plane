@@ -1,0 +1,12 @@
+{
+  "extends": "@plane/typescript-config/react-library.json",
+  "include": ["src", "tests"],
+  "compilerOptions": {
+    "noEmit": true,
+    "noImplicitReturns": false,
+    "noUnusedParameters": false,
+    "noUnusedLocals": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "exclude": ["node_modules"]
+}

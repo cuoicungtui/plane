@@ -73,7 +73,9 @@ RUN find /app/node_modules \( -name 'esbuild' -o -name 'tsgolint' \) -type f -de
 # on Alpine's musl libc, so PDF export's whiteboard rendering (whiteboard-render.service.ts)
 # uses playwright-core purely as a driver and launches Alpine's own `chromium`
 # apk package instead — no Playwright browser download needed or attempted.
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+# font-noto-cjk (~90 MB installed) is what draws Chinese, Japanese and Korean text on a
+# whiteboard: without it those characters come out as empty boxes in the exported PDF.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont font-noto-cjk
 ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 ENV TURBO_TELEMETRY_DISABLED=1

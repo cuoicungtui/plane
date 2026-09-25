@@ -24,14 +24,6 @@ type TArgs = {
 
 const whiteboardService = new PageWhiteboardService();
 
-const blobToDataUrl = (blob: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result)));
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(blob);
-  });
-
 type TWhiteboardExportArgs = {
   boardId: string;
   pageId: string;
@@ -39,36 +31,25 @@ type TWhiteboardExportArgs = {
   workspaceSlug: string;
 };
 
-// PDF/HTML export runs entirely client-side (this parser is DOM-based), so
-// pulling in Excalidraw's canvas renderer only inside this function — rather
-// than as a top-level import — keeps it out of every export that has no
-// whiteboard embed to rasterize.
+// PDF/HTML export runs entirely client-side (this parser is DOM-based), so the
+// Plait renderer is loaded only inside this function — rather than as a
+// top-level import — to keep it out of every export that has no whiteboard
+// embed to rasterize. Resolves to null for an empty board or an old
+// (Excalidraw) one, which the caller turns into the placeholder text.
 const renderWhiteboardToImage = async ({
   boardId,
   pageId,
   projectId,
   workspaceSlug,
 }: TWhiteboardExportArgs): Promise<string | null> => {
-  const { exportToBlob } = await import("@excalidraw/excalidraw");
-  const board = await whiteboardService.retrieve(workspaceSlug, projectId, pageId, boardId);
-  const scene = (board.scene ?? {}) as { elements?: any[]; appState?: any; files?: Record<string, any> };
-  const elements = (scene.elements ?? []).filter((element: any) => !element.isDeleted);
-  if (elements.length === 0) return null;
-  const files: Record<string, any> = { ...scene.files };
-  await Promise.all(
-    board.asset_ids.map(async (assetId) => {
-      try {
-        const assetUrl = getEditorAssetSrc({ assetId, projectId, workspaceSlug }) ?? "";
-        const response = await fetch(assetUrl);
-        const blob = await response.blob();
-        files[assetId] = { id: assetId, dataURL: await blobToDataUrl(blob), mimeType: blob.type, created: Date.now() };
-      } catch (assetError) {
-        console.error("Failed to fetch whiteboard asset for PDF export", assetId, assetError);
-      }
-    })
-  );
-  const blob = await exportToBlob({ elements, appState: scene.appState ?? {}, files });
-  return blobToDataUrl(blob);
+  const [{ renderWhiteboardPng }, board] = await Promise.all([
+    import("@plane/whiteboard"),
+    whiteboardService.retrieve(workspaceSlug, projectId, pageId, boardId),
+  ]);
+  if (board.engine !== "plait") return null;
+  return renderWhiteboardPng(board.scene, {
+    resolveUrl: (assetId) => getEditorAssetSrc({ assetId, projectId, workspaceSlug }),
+  });
 };
 
 export const useParseEditorContent = (args: TArgs) => {
