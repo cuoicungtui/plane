@@ -11,7 +11,9 @@ import {
   filterPageTree,
   getPageAncestors,
   getPageDescendantIds,
+  getOptimisticSortOrder,
   getPageDropPosition,
+  getPageTreeRows,
 } from "../src/page-tree";
 
 const page = (id: string, parent: string | null = null, sort_order?: number, created_at?: string): TPageTreeInput => ({
@@ -175,6 +177,20 @@ describe("getPageDropPosition", () => {
     });
   });
 
+  it("makes the page the first child of the target", () => {
+    expect(getPageDropPosition(tree, { dragId: "c", targetId: "a", instruction: "first-child" })).toEqual({
+      parent_id: "a",
+      prev_sibling_id: null,
+      isNoop: false,
+    });
+  });
+
+  it("flags first-child on a page that already is the first child, and refuses cycles", () => {
+    expect(getPageDropPosition(tree, { dragId: "a1", targetId: "a", instruction: "first-child" })?.isNoop).toBe(true);
+    expect(getPageDropPosition(tree, { dragId: "a2", targetId: "a", instruction: "first-child" })?.isNoop).toBe(false);
+    expect(getPageDropPosition(tree, { dragId: "a", targetId: "a2", instruction: "first-child" })).toBeNull();
+  });
+
   it("makes the page the only child of a leaf", () => {
     expect(getPageDropPosition(tree, { dragId: "c", targetId: "b", instruction: "child" })).toEqual({
       parent_id: "b",
@@ -272,5 +288,90 @@ describe("getPageDropPosition", () => {
         isNoop: false,
       });
     });
+  });
+});
+
+describe("getPageTreeRows", () => {
+  const tree = buildPageTree(sample());
+
+  it("lists only the roots when nothing is expanded", () => {
+    expect(getPageTreeRows(tree, { expandedIds: new Set() })).toEqual([
+      { id: "a", depth: 0, hasChildren: true, isExpanded: false },
+      { id: "b", depth: 0, hasChildren: false, isExpanded: false },
+      { id: "c", depth: 0, hasChildren: false, isExpanded: false },
+    ]);
+  });
+
+  it("lists the children of expanded pages right below them, with their depth", () => {
+    const rows = getPageTreeRows(tree, { expandedIds: new Set(["a", "a2"]) });
+    expect(rows.map((row) => [row.id, row.depth])).toEqual([
+      ["a", 0],
+      ["a1", 1],
+      ["a2", 1],
+      ["a2x", 2],
+      ["b", 0],
+      ["c", 0],
+    ]);
+    expect(rows.find((row) => row.id === "a2")).toEqual({ id: "a2", depth: 1, hasChildren: true, isExpanded: true });
+  });
+
+  it("does not list the children of a collapsed page even when a deeper page is expanded", () => {
+    expect(getPageTreeRows(tree, { expandedIds: new Set(["a2"]) }).map((row) => row.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("only lists visible pages and counts only visible children", () => {
+    const visibleIds = new Set(["a", "a2", "a2x"]);
+    const rows = getPageTreeRows(tree, { expandedIds: new Set(["a", "a2"]), visibleIds });
+    expect(rows.map((row) => row.id)).toEqual(["a", "a2", "a2x"]);
+    const onlyA = getPageTreeRows(tree, { expandedIds: new Set(["a"]), visibleIds: new Set(["a"]) });
+    expect(onlyA).toEqual([{ id: "a", depth: 0, hasChildren: false, isExpanded: false }]);
+  });
+
+  it("lists orphans at the root together with their own children", () => {
+    const withOrphan = buildPageTree([page("r", null, 1), page("orphan", "hidden", 2), page("kid", "orphan", 1)]);
+    expect(getPageTreeRows(withOrphan, { expandedIds: new Set(["orphan"]) }).map((row) => [row.id, row.depth])).toEqual(
+      [
+        ["r", 0],
+        ["orphan", 0],
+        ["kid", 1],
+      ]
+    );
+  });
+});
+
+describe("getOptimisticSortOrder", () => {
+  const tree = buildPageTree(sample());
+  const orders = { a: 100, b: 200, c: 300, a1: 10, a2: 20, a2x: 5 };
+
+  it("puts the page halfway between the previous sibling and the one after it", () => {
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "c", parent_id: null, prev_sibling_id: "a" })).toBe(150);
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "a2x", parent_id: "a", prev_sibling_id: "a1" })).toBe(15);
+  });
+
+  it("puts the page one step after the last sibling", () => {
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "a", parent_id: null, prev_sibling_id: "c" })).toBe(
+      300 + 65535
+    );
+  });
+
+  it("puts the page one step before the first sibling", () => {
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "c", parent_id: null, prev_sibling_id: null })).toBe(
+      100 - 65535
+    );
+  });
+
+  it("uses the default for the first child of a page without children", () => {
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "c", parent_id: "b", prev_sibling_id: null })).toBe(65535);
+  });
+
+  it("ignores the dragged page when it is one of the neighbours", () => {
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "b", parent_id: null, prev_sibling_id: "a" })).toBe(200);
+    expect(getOptimisticSortOrder(tree, orders, { dragId: "a2", parent_id: "a", prev_sibling_id: "a1" })).toBe(
+      10 + 65535
+    );
+  });
+
+  it("treats a missing sort_order as the API default", () => {
+    expect(getOptimisticSortOrder(tree, {}, { dragId: "c", parent_id: null, prev_sibling_id: "a" })).toBe(65535);
   });
 });

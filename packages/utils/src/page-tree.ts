@@ -30,7 +30,8 @@ export type TPageTree = {
   orphanIds: Set<string>;
 };
 
-export type TPageDropInstruction = "before" | "after" | "child";
+/** `child` makes the page the last child of the target, `first-child` the first (used on an expanded target). */
+export type TPageDropInstruction = "before" | "after" | "child" | "first-child";
 
 export type TPageDropPosition = TPagePositionPayload & {
   /** True when the drop would leave the page where it already is, so no request is needed. */
@@ -207,7 +208,10 @@ export const getPageDropPosition = (
 
   let parentId: string | null;
   let prevSiblingId: string | null;
-  if (instruction === "child") {
+  if (instruction === "first-child") {
+    parentId = targetId;
+    prevSiblingId = null;
+  } else if (instruction === "child") {
     parentId = targetId;
     prevSiblingId = lastAnchorId(tree, tree.childrenIds[targetId], dragId);
   } else {
@@ -227,4 +231,59 @@ export const getPageDropPosition = (
     prev_sibling_id: prevSiblingId,
     isNoop: parentId === currentParentId && prevSiblingId === currentPrevSiblingId,
   };
+};
+
+export type TPageTreeRow = {
+  id: string;
+  depth: number;
+  hasChildren: boolean;
+  isExpanded: boolean;
+};
+
+/**
+ * @description flattens the tree into the rows to render, parents before their children. A row is only listed when
+ * it is in `visibleIds` (when given), and its children only when it is in `expandedIds`. `hasChildren` counts the
+ * visible children, so a branch whose children are all filtered out shows no arrow.
+ * @param {TPageTree} tree
+ * @param {{ expandedIds: Set<string>; visibleIds?: Set<string> }} params
+ */
+export const getPageTreeRows = (
+  tree: TPageTree,
+  { expandedIds, visibleIds }: { expandedIds: Set<string>; visibleIds?: Set<string> }
+): TPageTreeRow[] => {
+  const rows: TPageTreeRow[] = [];
+  const isVisible = (id: string) => !visibleIds || visibleIds.has(id);
+  const visit = (id: string, depth: number, path: Set<string>) => {
+    const childIds = (tree.childrenIds[id] ?? []).filter(isVisible);
+    const isExpanded = childIds.length > 0 && expandedIds.has(id);
+    rows.push({ id, depth, hasChildren: childIds.length > 0, isExpanded });
+    if (!isExpanded) return;
+    const nextPath = new Set(path).add(id);
+    for (const childId of childIds) if (!nextPath.has(childId)) visit(childId, depth + 1, nextPath);
+  };
+  for (const rootId of tree.rootIds.filter(isVisible)) visit(rootId, 0, new Set());
+  return rows;
+};
+
+/**
+ * @description `sort_order` to show a page with right after a drop, before the API answers with the real one:
+ * halfway between its new neighbours, one step past the last sibling, or one step before the first.
+ * @param {TPageTree} tree
+ * @param {Record<string, number | undefined>} sortOrders `sort_order` of each page in the tree
+ * @param {{ dragId: string } & TPagePositionPayload} params
+ */
+export const getOptimisticSortOrder = (
+  tree: TPageTree,
+  sortOrders: Record<string, number | undefined>,
+  { dragId, parent_id, prev_sibling_id }: { dragId: string } & TPagePositionPayload
+): number => {
+  const orderOf = (id: string) => sortOrders[id] ?? PAGE_TREE_DEFAULT_SORT_ORDER;
+  const siblings = (parent_id ? (tree.childrenIds[parent_id] ?? []) : tree.rootIds).filter((id) => id !== dragId);
+  const prevIndex = prev_sibling_id ? siblings.indexOf(prev_sibling_id) : -1;
+  const prevId = prevIndex >= 0 ? siblings[prevIndex] : undefined;
+  const nextId = siblings[prevIndex + 1];
+  if (prevId !== undefined && nextId !== undefined) return (orderOf(prevId) + orderOf(nextId)) / 2;
+  if (prevId !== undefined) return orderOf(prevId) + PAGE_TREE_DEFAULT_SORT_ORDER;
+  if (nextId !== undefined) return orderOf(nextId) - PAGE_TREE_DEFAULT_SORT_ORDER;
+  return PAGE_TREE_DEFAULT_SORT_ORDER;
 };
