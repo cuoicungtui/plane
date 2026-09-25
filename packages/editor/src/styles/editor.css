@@ -539,6 +539,11 @@ span[data-name][data-type="emoji"] img {
   background-color: rgb(250 204 21 / 0.12);
   box-shadow: -3px 0 0 0 rgb(250 204 21 / 0.7);
 }
+.ProseMirror .has-page-comment-text {
+  background-color: rgb(250 204 21 / 0.3);
+  border-bottom: 2px solid rgb(250 204 21 / 0.8);
+  cursor: pointer;
+}
 .ProseMirror .has-page-comment::after {
   content: attr(data-comment-count);
   position: absolute;

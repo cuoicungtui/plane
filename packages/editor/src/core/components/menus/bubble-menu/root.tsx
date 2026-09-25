@@ -8,7 +8,9 @@ import { isNodeSelection } from "@tiptap/core";
 import type { Editor } from "@tiptap/core";
 import { BubbleMenu, useEditorState } from "@tiptap/react";
 import type { BubbleMenuProps } from "@tiptap/react";
+import { MessageSquare } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
+import { v4 as uuidv4 } from "uuid";
 // plane utils
 import { cn } from "@plane/utils";
 // components
@@ -29,6 +31,8 @@ import {
 import { COLORS_LIST } from "@/constants/common";
 import { CORE_EXTENSIONS } from "@/constants/extension";
 // extensions
+import { PAGE_COMMENT_MARK, PAGE_COMMENT_REQUEST_EVENT } from "@/extensions/page-comments";
+import type { TPageCommentAnchorEventDetail } from "@/extensions/page-comments";
 import { isCellSelection } from "@/extensions/table/table/utilities/helpers";
 // types
 import type { IEditorPropsExtended, TEditorCommands, TExtensions } from "@/types";
@@ -92,7 +96,7 @@ export function EditorBubbleMenu(props: Props) {
 
   const editorState: EditorStateType = useEditorState({
     editor,
-    selector: ({ editor }) => ({
+    selector: ({ editor: editorInstance }) => ({
       code: formattingItems.code.isActive(),
       bold: formattingItems.bold.isActive(),
       italic: formattingItems.italic.isActive(),
@@ -101,8 +105,8 @@ export function EditorBubbleMenu(props: Props) {
       left: formattingItems["text-align"].isActive({ alignment: "left" }),
       right: formattingItems["text-align"].isActive({ alignment: "right" }),
       center: formattingItems["text-align"].isActive({ alignment: "center" }),
-      color: COLORS_LIST.find((c) => TextColorItem(editor).isActive({ color: c.key })),
-      backgroundColor: COLORS_LIST.find((c) => BackgroundColorItem(editor).isActive({ color: c.key })),
+      color: COLORS_LIST.find((c) => TextColorItem(editorInstance).isActive({ color: c.key })),
+      backgroundColor: COLORS_LIST.find((c) => BackgroundColorItem(editorInstance).isActive({ color: c.key })),
     }),
   });
 
@@ -110,17 +114,31 @@ export function EditorBubbleMenu(props: Props) {
     ? [formattingItems.code]
     : [formattingItems.bold, formattingItems.italic, formattingItems.underline, formattingItems.strikethrough];
 
+  // The mark is applied right away so the selected text keeps its place while the comment is typed; the web app removes it if the draft is cancelled.
+  const commentOnSelection = () => {
+    const { from, to } = editor.state.selection;
+    const quote = editor.state.doc.textBetween(from, to, " ").trim().slice(0, 200);
+    if (!quote) return;
+    const commentId = uuidv4();
+    editor.chain().setMark(PAGE_COMMENT_MARK, { commentId }).run();
+    window.dispatchEvent(
+      new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
+        detail: { anchorType: "text", anchorId: commentId, quote },
+      })
+    );
+  };
+
   const bubbleMenuProps: EditorBubbleMenuProps = {
     editor,
-    shouldShow: ({ state, editor }) => {
+    shouldShow: ({ state, editor: currentEditor }) => {
       const { selection } = state;
       const { empty } = selection;
 
       if (
         empty ||
-        !editor.isEditable ||
-        editor.isActive(CORE_EXTENSIONS.IMAGE) ||
-        editor.isActive(CORE_EXTENSIONS.CUSTOM_IMAGE) ||
+        !currentEditor.isEditable ||
+        currentEditor.isActive(CORE_EXTENSIONS.IMAGE) ||
+        currentEditor.isActive(CORE_EXTENSIONS.CUSTOM_IMAGE) ||
         isNodeSelection(selection) ||
         isCellSelection(selection) ||
         isSelecting
@@ -193,6 +211,21 @@ export function EditorBubbleMenu(props: Props) {
           ref={menuRef}
           className="horizontal-scrollbar flex scrollbar-xs divide-x divide-subtle-1 overflow-x-scroll rounded-lg border border-subtle bg-surface-1 py-2 shadow-raised-200"
         >
+          {editor.storage.pageComments?.enabled && (
+            <div className="px-2">
+              <button
+                type="button"
+                title="Comment"
+                onClick={(e) => {
+                  commentOnSelection();
+                  e.stopPropagation();
+                }}
+                className="grid size-7 place-items-center rounded-sm text-tertiary transition-colors hover:bg-layer-1 active:bg-layer-1"
+              >
+                <MessageSquare className="size-4" />
+              </button>
+            </div>
+          )}
           <div className="px-2">
             <BubbleMenuNodeSelector editor={editor} />
           </div>

@@ -15,7 +15,7 @@ import { getEditorMenuItems } from "@/components/menus";
 // constants
 import { CORE_EXTENSIONS } from "@/constants/extension";
 import { CORE_EDITOR_META } from "@/constants/meta";
-import { refreshPageComments } from "@/extensions/page-comments";
+import { findCommentMarkRanges, PAGE_COMMENT_MARK, refreshPageComments } from "@/extensions/page-comments";
 // types
 import type { EditorRefApi, IEditorProps } from "@/types";
 // local imports
@@ -122,24 +122,41 @@ export const getEditorRefHelpers = (args: TArgs): EditorRefApi => {
       const utilityStorage = editor.storage.utility;
       return utilityStorage.activeDropbarExtensions.length > 0;
     },
-    setCommentedBlocks: (blocks) => {
+    setCommentedAnchors: (anchors) => {
       if (!editor || editor.isDestroyed) return;
-      refreshPageComments(editor, blocks);
+      refreshPageComments(editor, anchors);
     },
-    hasBlock: (blockId) => {
+    hasCommentAnchor: (anchorType, anchorId) => {
       if (!editor || editor.isDestroyed) return false;
+      if (anchorType === "text") return findCommentMarkRanges(editor.state.doc, anchorId).length > 0;
       let found = false;
       editor.state.doc.descendants((node) => {
         if (found) return false;
-        if (node.attrs?.id === blockId) found = true;
+        if (node.attrs?.id === anchorId) found = true;
         return !found;
       });
       return found;
     },
-    scrollToBlock: (blockId) => {
+    scrollToCommentAnchor: (anchorType, anchorId) => {
       if (!editor || editor.isDestroyed) return;
-      const element = editor.view.dom.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+      const selector =
+        anchorType === "text" ? `[data-comment-id="${CSS.escape(anchorId)}"]` : `[data-id="${CSS.escape(anchorId)}"]`;
+      const element = editor.view.dom.querySelector(selector);
       if (element instanceof HTMLElement) element.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+    removeCommentMark: (commentId) => {
+      if (!editor || editor.isDestroyed) return;
+      const markType = editor.schema.marks[PAGE_COMMENT_MARK];
+      if (!markType) return;
+      const { tr, doc } = editor.state;
+      findCommentMarkRanges(doc, commentId).forEach(({ from, to }) => {
+        doc.nodesBetween(from, to, (node) => {
+          node.marks.forEach((mark) => {
+            if (mark.type === markType && mark.attrs.commentId === commentId) tr.removeMark(from, to, mark);
+          });
+        });
+      });
+      if (tr.docChanged) editor.view.dispatch(tr);
     },
     scrollSummary: (marking) => {
       if (!editor) return;

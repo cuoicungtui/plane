@@ -32,7 +32,7 @@ export const PageCommentsController = observer(function PageCommentsController(p
   const { updateQueryParams } = useQueryParams();
   const { threads } = usePageComments(page);
   const {
-    editor: { editorRef, setCommentDraft, focusCommentAnchor },
+    editor: { editorRef, commentDraft, setCommentDraft, focusCommentAnchor },
   } = page;
 
   const openCommentsTab = useCallback(() => {
@@ -44,6 +44,10 @@ export const PageCommentsController = observer(function PageCommentsController(p
     const onRequest = (event: Event) => {
       const detail = (event as CustomEvent<TPageCommentAnchorEventDetail>).detail;
       if (!detail?.anchorId) return;
+      // a text draft has already marked its selection, so replacing it must take that mark back
+      if (commentDraft?.anchorType === "text" && commentDraft.anchorId !== detail.anchorId) {
+        editorRef?.removeCommentMark(commentDraft.anchorId);
+      }
       setCommentDraft({ anchorType: detail.anchorType, anchorId: detail.anchorId, quote: detail.quote });
       openCommentsTab();
     };
@@ -59,10 +63,13 @@ export const PageCommentsController = observer(function PageCommentsController(p
       window.removeEventListener(PAGE_COMMENT_REQUEST_EVENT, onRequest);
       window.removeEventListener(PAGE_COMMENT_OPEN_EVENT, onOpen);
     };
-  }, [focusCommentAnchor, openCommentsTab, setCommentDraft]);
+  }, [commentDraft, editorRef, focusCommentAnchor, openCommentsTab, setCommentDraft]);
 
   useEffect(() => {
-    editorRef?.setCommentedBlocks(countOpenThreadsByAnchor(threads, "block"));
+    editorRef?.setCommentedAnchors({
+      blocks: countOpenThreadsByAnchor(threads, "block"),
+      texts: countOpenThreadsByAnchor(threads, "text"),
+    });
   }, [editorRef, threads]);
 
   return null;

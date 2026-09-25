@@ -90,7 +90,9 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
   const orphanFlags = new Map(
     threads.map(({ root }) => [
       root.id,
-      !!editorRef && root.anchor_type === "block" && !editorRef.hasBlock(root.anchor_id),
+      !!editorRef &&
+        (root.anchor_type === "block" || root.anchor_type === "text") &&
+        !editorRef.hasCommentAnchor(root.anchor_type, root.anchor_id),
     ])
   );
 
@@ -139,7 +141,10 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
               focusOnMount
               placeholder={t("page_comments.placeholder")}
               submitLabel={t("page_comments.comment")}
-              onCancel={() => setCommentDraft(null)}
+              onCancel={() => {
+                if (commentDraft.anchorType === "text") editorRef?.removeCommentMark(commentDraft.anchorId);
+                setCommentDraft(null);
+              }}
               onSubmit={async (body) => {
                 await run(() =>
                   pageCommentService.createComment(workspaceSlug, projectId, pageId, {
@@ -178,7 +183,9 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
             isOrphan={orphanFlags.get(thread.root.id) ?? false}
             canComment={canComment}
             onLocate={() => {
-              if (thread.root.anchor_type === "block") editorRef?.scrollToBlock(thread.root.anchor_id);
+              const { anchor_type, anchor_id } = thread.root;
+              if (anchor_type === "block" || anchor_type === "text")
+                editorRef?.scrollToCommentAnchor(anchor_type, anchor_id);
             }}
             onReply={(parentId, body) =>
               run(() => pageCommentService.createComment(workspaceSlug, projectId, pageId, { body, parent: parentId }))

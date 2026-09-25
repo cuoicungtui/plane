@@ -206,22 +206,26 @@ export function BlockMenu(props: Props) {
         }
       },
     },
-    {
-      icon: MessageSquare,
-      key: "comment",
-      label: "Comment",
-      onClick: (_e) => {
-        const { selection } = editor.state;
-        const node = (selection as NodeSelection).node ?? selection.$from.parent;
-        const anchorId = node?.attrs?.id as string | undefined;
-        if (!anchorId) return;
-        window.dispatchEvent(
-          new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
-            detail: { anchorType: "block", anchorId, quote: node.textContent.slice(0, 200) },
-          })
-        );
-      },
-    },
+    ...(editor.storage.pageComments?.enabled
+      ? [
+          {
+            icon: MessageSquare,
+            key: "comment",
+            label: "Comment",
+            onClick: (_e: React.MouseEvent) => {
+              const { selection } = editor.state;
+              const node = (selection as NodeSelection).node ?? selection.$from.parent;
+              const anchorId = node?.attrs?.id as string | undefined;
+              if (!anchorId) return;
+              window.dispatchEvent(
+                new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
+                  detail: { anchorType: "block", anchorId, quote: node.textContent.slice(0, 200) },
+                })
+              );
+            },
+          },
+        ]
+      : []),
     ...getNodeOptions(editor),
   ];
 
