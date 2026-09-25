@@ -289,6 +289,15 @@
     "add_child": "Thêm trang con",
     "create_error": "Không thể tạo trang con. Vui lòng thử lại.",
     "move_error": "Không thể di chuyển trang. Vui lòng thử lại.",
-    "hidden_pages": "Các trang bạn không xem được"
+    "hidden_pages": "Các trang bạn không xem được",
+    "panel_label": "Các trang Wiki",
+    "all_pages": "Tất cả trang",
+    "show_panel": "Hiện cây trang",
+    "hide_panel": "Ẩn cây trang",
+    "owned_by": "Chủ sở hữu",
+    "public": "Công khai",
+    "private": "Riêng tư",
+    "created_on": "Tạo ngày {date}",
+    "updated": "Sửa {time}"
   }
 }

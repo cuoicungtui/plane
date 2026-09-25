@@ -289,6 +289,15 @@
     "add_child": "Add a sub-page",
     "create_error": "Could not create the sub-page. Please try again.",
     "move_error": "Could not move the page. Please try again.",
-    "hidden_pages": "Pages you cannot see"
+    "hidden_pages": "Pages you cannot see",
+    "panel_label": "Wiki pages",
+    "all_pages": "All pages",
+    "show_panel": "Show the page tree",
+    "hide_panel": "Hide the page tree",
+    "owned_by": "Owned by",
+    "public": "Public",
+    "private": "Private",
+    "created_on": "Created on {date}",
+    "updated": "Updated {time}"
   }
 }

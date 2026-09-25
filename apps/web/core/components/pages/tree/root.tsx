@@ -4,11 +4,10 @@
  * See the LICENSE file for details.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 // plane imports
-import { EPageAccess } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import type { TPageNavigationTabs } from "@plane/types";
@@ -17,23 +16,16 @@ import { filterPageTree, getPageDropPosition, getPageTreeRows } from "@plane/uti
 // components
 import { ListLayout } from "@/components/core/list";
 // hooks
-import { useAppRouter } from "@/hooks/use-app-router";
-import { getValueFromLocalStorage, setValueIntoLocalStorage } from "@/hooks/use-local-storage";
 import type { EPageStoreType } from "@/hooks/store";
 import { usePageStore } from "@/hooks/store";
 // local imports
 import { PageTreeRow } from "./row";
+import { useAddChildPage } from "./use-add-child-page";
+import { usePageTreeExpansion } from "./use-tree-expansion";
 
 type Props = {
   pageType: TPageNavigationTabs;
   storeType: EPageStoreType;
-};
-
-const getStorageKey = (projectId: string) => `wiki-page-tree-expanded:${projectId}`;
-
-const readExpandedIds = (projectId: string): Set<string> => {
-  const stored = getValueFromLocalStorage(getStorageKey(projectId), []);
-  return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : []);
 };
 
 /**
@@ -44,7 +36,6 @@ export const PagesTreeRoot = observer(function PagesTreeRoot(props: Props) {
   const { pageType, storeType } = props;
   // router
   const { workspaceSlug, projectId } = useParams();
-  const router = useAppRouter();
   // hooks
   const { t } = useTranslation();
   const {
@@ -53,16 +44,12 @@ export const PagesTreeRoot = observer(function PagesTreeRoot(props: Props) {
     getCurrentProjectFilteredPageIdsByTab,
     getProjectPageTree,
     getPageById,
-    createPage,
     updatePagePosition,
   } = usePageStore(storeType);
-  // states
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
-    projectId ? readExpandedIds(projectId.toString()) : new Set()
-  );
   // derived values
   const workspaceSlugValue = workspaceSlug?.toString() ?? "";
   const projectIdValue = projectId?.toString() ?? "";
+  const { expandedIds, toggle: handleToggle, expand: handleExpand } = usePageTreeExpansion(projectIdValue);
   const isReadOnly = pageType === "archived";
   const tabPageIds = getCurrentProjectPageIdsByTab(pageType);
   const filteredPageIds = getCurrentProjectFilteredPageIdsByTab(pageType);
@@ -79,46 +66,7 @@ export const PagesTreeRoot = observer(function PagesTreeRoot(props: Props) {
     visibleIds: filter?.visibleIds,
   });
 
-  const updateExpandedIds = useCallback(
-    (update: (current: Set<string>) => Set<string>) => {
-      setExpandedIds((current) => {
-        const next = update(current);
-        setValueIntoLocalStorage(getStorageKey(projectIdValue), [...next]);
-        return next;
-      });
-    },
-    [projectIdValue]
-  );
-
-  const handleToggle = useCallback(
-    (pageId: string) =>
-      updateExpandedIds((current) => {
-        const next = new Set(current);
-        if (!next.delete(pageId)) next.add(pageId);
-        return next;
-      }),
-    [updateExpandedIds]
-  );
-
-  const handleExpand = useCallback(
-    (pageId: string) => updateExpandedIds((current) => new Set(current).add(pageId)),
-    [updateExpandedIds]
-  );
-
-  const handleAddChild = useCallback(
-    async (parentId: string) => {
-      const parent = getPageById(parentId);
-      if (!parent) return;
-      try {
-        const page = await createPage({ parent: parentId, access: parent.access ?? EPageAccess.PUBLIC });
-        handleExpand(parentId);
-        if (page?.id) router.push(`/${workspaceSlugValue}/projects/${projectIdValue}/pages/${page.id}`);
-      } catch {
-        setToast({ type: TOAST_TYPE.ERROR, title: t("common.error.label"), message: t("page_tree.create_error") });
-      }
-    },
-    [createPage, getPageById, handleExpand, projectIdValue, router, t, workspaceSlugValue]
-  );
+  const handleAddChild = useAddChildPage(storeType, handleExpand);
 
   const getDropPosition = useCallback(
     (dragId: string, targetId: string, instruction: TPageDropInstruction) => {

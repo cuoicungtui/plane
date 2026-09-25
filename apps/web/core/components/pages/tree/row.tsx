@@ -20,7 +20,7 @@ import type { TPageDropInstruction, TPageTreeRow } from "@plane/utils";
 import { cn, getPageName } from "@plane/utils";
 // components
 import { ListItem } from "@/components/core/list";
-import { BlockItemAction } from "@/components/pages/list/block-item-action";
+import { BlockItemAction, HOVER_ONLY_CLASS } from "@/components/pages/list/block-item-action";
 // hooks
 import { usePlatformOS } from "@/hooks/use-platform-os";
 import type { EPageStoreType } from "@/hooks/store";
@@ -207,7 +207,10 @@ export const PageTreeRow = observer(function PageTreeRow(props: Props) {
                     type="button"
                     aria-label={t("page_tree.add_child")}
                     onClick={() => onAddChild(id)}
-                    className="grid h-5 w-5 place-items-center rounded-sm text-tertiary hover:bg-layer-transparent-hover hover:text-primary"
+                    className={cn(
+                      "grid h-5 w-5 place-items-center rounded-sm text-tertiary hover:bg-layer-transparent-hover hover:text-primary",
+                      HOVER_ONLY_CLASS
+                    )}
                   >
                     <Plus className="h-4 w-4" />
                   </button>
