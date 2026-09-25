@@ -105,6 +105,7 @@ from .page import (
     PageVersionDetailSerializer,
     PagePositionSerializer,
 )
+from .page_comment import PageCommentSerializer
 from .whiteboard import PageWhiteboardSerializer, WorkspaceWhiteboardLibrarySerializer
 
 from .estimate import (

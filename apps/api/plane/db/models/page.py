@@ -185,3 +185,51 @@ class PageVersion(BaseModel):
             else strip_tags(self.description_html)
         )
         super(PageVersion, self).save(*args, **kwargs)
+
+
+class PageComment(BaseModel):
+    """A comment thread on a Page, anchored to a block, a piece of text or a whiteboard element.
+
+    Only top-level comments carry an anchor; replies (``parent`` set) inherit it.
+    The document itself stores just the anchor id, never the comment.
+    """
+
+    BLOCK = "block"
+    TEXT = "text"
+    BOARD_ELEMENT = "board_element"
+    ANCHOR_TYPE_CHOICES = (
+        (BLOCK, "Block"),
+        (TEXT, "Text"),
+        (BOARD_ELEMENT, "Whiteboard element"),
+    )
+
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="page_comments")
+    page = models.ForeignKey("db.Page", on_delete=models.CASCADE, related_name="page_comments")
+    parent = models.ForeignKey(
+        "db.PageComment", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="page_comments")
+    body = models.TextField()
+    anchor_type = models.CharField(max_length=20, choices=ANCHOR_TYPE_CHOICES, blank=True, default="")
+    anchor_id = models.CharField(max_length=255, blank=True, default="")
+    anchor_board_id = models.CharField(max_length=255, blank=True, default="")
+    quote = models.TextField(blank=True, default="")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_page_comments",
+    )
+    edited_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Page Comment"
+        verbose_name_plural = "Page Comments"
+        db_table = "page_comments"
+        ordering = ("created_at",)
+        indexes = [models.Index(fields=["page", "created_at"], name="pagecomment_page_created_idx")]
+
+    def __str__(self):
+        return f"{self.page_id} {self.anchor_type}"
