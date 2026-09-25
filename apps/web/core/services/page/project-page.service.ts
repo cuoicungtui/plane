@@ -9,6 +9,7 @@ import { API_BASE_URL } from "@plane/constants";
 import type {
   TDocumentPayload,
   TPage,
+  TPageBacklink,
   TPagePositionPayload,
   TPagePositionResponse,
   TPageVerification,
@@ -173,6 +174,14 @@ export class ProjectPageService extends APIService {
 
   async unverify(workspaceSlug: string, projectId: string, pageId: string): Promise<void> {
     return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/verify/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async fetchBacklinks(workspaceSlug: string, projectId: string, pageId: string): Promise<TPageBacklink[]> {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/backlinks/`)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

@@ -35,6 +35,13 @@ export type TPage = {
   verify_expires_at?: string | null;
 } & TPageExtended;
 
+export type TPageBacklink = {
+  id: string;
+  name: string | null;
+  logo_props: TLogoProps | null;
+  updated_at: string;
+};
+
 export type TPageVerification = Pick<TPage, "verified_at" | "verified_by" | "verify_expires_at">;
 
 export type TPagePositionPayload = {

@@ -6,7 +6,13 @@
 
 import type { HocuspocusProvider } from "@hocuspocus/provider";
 import type { AnyExtension } from "@tiptap/core";
-import { SlashCommands, TaskItemEnhanced, WhiteboardEmbedExtension, WorkItemEmbedExtension } from "@/extensions";
+import {
+  SlashCommands,
+  TaskItemEnhanced,
+  WhiteboardEmbedExtension,
+  WikiLinkShortcutExtension,
+  WorkItemEmbedExtension,
+} from "@/extensions";
 import type { TSlashCommandAdditionalOption } from "@/extensions";
 // types
 import type { IEditorProps, TExtensions, TUserDetails } from "@/types";
@@ -48,6 +54,10 @@ const extensionRegistry: TDocumentEditorAdditionalExtensionsRegistry[] = [
       const widgetCallback = extendedEditorProps?.embed?.whiteboard?.widgetCallback;
       return widgetCallback ? WhiteboardEmbedExtension({ widgetCallback }) : undefined;
     },
+  },
+  {
+    isEnabled: () => true,
+    getExtension: () => WikiLinkShortcutExtension,
   },
   {
     isEnabled: (disabledExtensions) => !disabledExtensions.includes("task-checklist"),

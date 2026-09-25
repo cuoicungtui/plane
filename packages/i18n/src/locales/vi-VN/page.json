@@ -26,6 +26,13 @@
           "highlight_changes": "Đánh dấu thay đổi"
         }
       },
+      "backlinks": {
+        "label": "Liên kết ngược",
+        "empty_state": {
+          "title": "Chưa có trang nào nhắc đến trang này",
+          "description": "Gõ @ trong một trang khác rồi chọn trang này để tạo liên kết."
+        }
+      },
       "assets": {
         "label": "Tài sản",
         "download_button": "Tải xuống",
@@ -325,5 +332,9 @@
       "verify_error": "Không thể xác minh trang. Vui lòng thử lại.",
       "unverify_error": "Không thể bỏ xác minh. Vui lòng thử lại."
     }
+  },
+  "page_backlinks": {
+    "unavailable": "Trang không truy cập được",
+    "count": "{count} trang nhắc đến trang này"
   }
 }
