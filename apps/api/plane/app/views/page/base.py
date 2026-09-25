@@ -26,6 +26,8 @@ from django.db.models import (
     Max,
 )
 from django.http import StreamingHttpResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.fields import ArrayField
 from django.db.models.functions import Coalesce
@@ -500,6 +502,56 @@ class PageViewSet(BaseViewSet):
         page.is_locked = False
         page.save()
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _verification_payload(self, page):
+        return {
+            "verified_at": page.verified_at,
+            "verified_by": page.verified_by_id,
+            "verify_expires_at": page.verify_expires_at,
+        }
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    def verify(self, request, slug, project_id, page_id):
+        page = Page.objects.get(
+            pk=page_id,
+            workspace__slug=slug,
+            projects__id=project_id,
+            project_pages__deleted_at__isnull=True,
+        )
+        if page.archived_at:
+            return Response({"error": "An archived page cannot be verified"}, status=status.HTTP_400_BAD_REQUEST)
+
+        expires_at = None
+        raw_expires_at = request.data.get("expires_at")
+        if raw_expires_at not in (None, ""):
+            try:
+                expires_at = parse_date(str(raw_expires_at))
+            except ValueError:
+                expires_at = None
+            if expires_at is None:
+                return Response({"error": "expires_at must be a date (YYYY-MM-DD)"}, status=status.HTTP_400_BAD_REQUEST)
+            if expires_at <= timezone.localdate():
+                return Response({"error": "expires_at must be after today"}, status=status.HTTP_400_BAD_REQUEST)
+
+        page.verified_at = timezone.now()
+        page.verified_by = request.user
+        page.verify_expires_at = expires_at
+        page.save(update_fields=["verified_at", "verified_by", "verify_expires_at", "updated_at"])
+        return Response(self._verification_payload(page), status=status.HTTP_200_OK)
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    def unverify(self, request, slug, project_id, page_id):
+        page = Page.objects.get(
+            pk=page_id,
+            workspace__slug=slug,
+            projects__id=project_id,
+            project_pages__deleted_at__isnull=True,
+        )
+        page.verified_at = None
+        page.verified_by = None
+        page.verify_expires_at = None
+        page.save(update_fields=["verified_at", "verified_by", "verify_expires_at", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def access(self, request, slug, project_id, page_id):

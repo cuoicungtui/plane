@@ -53,6 +53,11 @@ class Page(BaseModel):
     moved_to_page = models.UUIDField(null=True, blank=True)
     moved_to_project = models.UUIDField(null=True, blank=True)
     sort_order = models.FloatField(default=DEFAULT_SORT_ORDER)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="verified_pages"
+    )
+    verify_expires_at = models.DateField(null=True, blank=True)
 
     external_id = models.CharField(max_length=255, null=True, blank=True)
     external_source = models.CharField(max_length=255, null=True, blank=True)

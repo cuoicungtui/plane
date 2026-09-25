@@ -54,6 +54,12 @@ urlpatterns = [
         PageViewSet.as_view({"post": "lock", "delete": "unlock"}),
         name="project-pages-lock-unlock",
     ),
+    # verify a page for a limited time
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/verify/",
+        PageViewSet.as_view({"post": "verify", "delete": "unverify"}),
+        name="project-pages-verify",
+    ),
     # private and public page
     path(
         "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/access/",

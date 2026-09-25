@@ -56,9 +56,12 @@ class PageSerializer(BaseSerializer):
             "label_ids",
             "project_ids",
             "sort_order",
+            "verified_at",
+            "verified_by",
+            "verify_expires_at",
         ]
-        # sort_order only changes through the page position endpoint
-        read_only_fields = ["workspace", "owned_by", "sort_order"]
+        # sort_order only changes through the page position endpoint, verification through the verify endpoint
+        read_only_fields = ["workspace", "owned_by", "sort_order", "verified_at", "verified_by", "verify_expires_at"]
 
     def create(self, validated_data):
         labels = validated_data.pop("labels", None)
