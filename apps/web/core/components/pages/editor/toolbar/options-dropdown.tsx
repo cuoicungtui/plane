@@ -139,6 +139,8 @@ export const PageOptionsDropdown = observer(function PageOptionsDropdown(props: 
           "sticky-toolbar",
           "copy-markdown",
           "version-history",
+          "verify",
+          "unverify",
           "make-a-copy",
           "archive-restore",
           "delete",

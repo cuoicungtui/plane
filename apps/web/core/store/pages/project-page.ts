@@ -47,6 +47,14 @@ export class ProjectPage extends BasePage implements TProjectPage {
         if (!workspaceSlug || !projectId || !page.id) throw new Error("Missing required fields.");
         await projectPageService.unlock(workspaceSlug, projectId, page.id);
       },
+      verify: async (expiresAt) => {
+        if (!workspaceSlug || !projectId || !page.id) throw new Error("Missing required fields.");
+        return await projectPageService.verify(workspaceSlug, projectId, page.id, expiresAt);
+      },
+      unverify: async () => {
+        if (!workspaceSlug || !projectId || !page.id) throw new Error("Missing required fields.");
+        await projectPageService.unverify(workspaceSlug, projectId, page.id);
+      },
       archive: async () => {
         if (!workspaceSlug || !projectId || !page.id) throw new Error("Missing required fields.");
         return await projectPageService.archive(workspaceSlug, projectId, page.id);
@@ -70,6 +78,7 @@ export class ProjectPage extends BasePage implements TProjectPage {
       canCurrentUserEditPage: computed,
       canCurrentUserDuplicatePage: computed,
       canCurrentUserLockPage: computed,
+      canCurrentUserVerifyPage: computed,
       canCurrentUserChangeAccess: computed,
       canCurrentUserArchivePage: computed,
       canCurrentUserDeletePage: computed,
@@ -130,6 +139,16 @@ export class ProjectPage extends BasePage implements TProjectPage {
   get canCurrentUserLockPage() {
     const highestRole = this.getHighestRoleAcrossProjects();
     return this.isCurrentUserOwner || highestRole === EUserPermissions.ADMIN;
+  }
+
+  /**
+   * @description returns true if the current logged in user can verify the page, or remove its verification
+   */
+  get canCurrentUserVerifyPage() {
+    const highestRole = this.getHighestRoleAcrossProjects();
+    return (
+      !!highestRole && highestRole >= EUserPermissions.MEMBER && this.canCurrentUserAccessPage && !this.archived_at
+    );
   }
 
   /**

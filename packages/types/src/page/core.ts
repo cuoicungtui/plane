@@ -30,7 +30,12 @@ export type TPage = {
   deleted_at: Date | undefined;
   parent?: string | null;
   sort_order?: number;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  verify_expires_at?: string | null;
 } & TPageExtended;
+
+export type TPageVerification = Pick<TPage, "verified_at" | "verified_by" | "verify_expires_at">;
 
 export type TPagePositionPayload = {
   parent_id: string | null;

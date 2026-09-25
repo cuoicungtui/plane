@@ -299,5 +299,31 @@
     "private": "Private",
     "created_on": "Created on {date}",
     "updated": "Updated {time}"
+  },
+  "page_verification": {
+    "verified": "Verified",
+    "verified_until": "Verified until {date}",
+    "expired": "Verification expired",
+    "verified_by": "Verified by {name} on {date}",
+    "expires_on": "Expires on {date}",
+    "expired_on": "Expired on {date}",
+    "never_expires": "Never expires",
+    "verify": "Verify page",
+    "reverify": "Verify again",
+    "unverify": "Remove verification",
+    "modal_title": "Verify this page",
+    "modal_description": "Tell readers that \"{name}\" is accurate. After the chosen period the badge turns into a reminder to review it.",
+    "duration_days": "{count} days",
+    "until": "until {date}",
+    "no_expiry": "No expiry",
+    "confirm": "Verify",
+    "toast": {
+      "success_title": "Success!",
+      "error_title": "Error!",
+      "verified": "The page is verified.",
+      "unverified": "The verification was removed.",
+      "verify_error": "The page could not be verified. Please try again.",
+      "unverify_error": "The verification could not be removed. Please try again."
+    }
   }
 }

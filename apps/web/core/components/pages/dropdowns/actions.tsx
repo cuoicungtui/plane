@@ -4,20 +4,24 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
-import { ArchiveRestoreIcon, FileOutput, LockKeyhole, LockKeyholeOpen } from "lucide-react";
+import { ArchiveRestoreIcon, BadgeCheck, BadgeX, FileOutput, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 // constants
 import { EPageAccess } from "@plane/constants";
+// plane i18n
+import { useTranslation } from "@plane/i18n";
 // plane editor
 import { LinkIcon, CopyIcon, LockIcon, NewTabIcon, ArchiveIcon, TrashIcon, GlobeIcon } from "@plane/propel/icons";
 // plane ui
 import type { TContextMenuItem } from "@plane/ui";
 import { ContextMenu, CustomMenu } from "@plane/ui";
 // components
-import { cn } from "@plane/utils";
+import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+import { cn, getPageVerificationStatus } from "@plane/utils";
 import { DeletePageModal } from "@/components/pages/modals/delete-page-modal";
+import { VerifyPageModal } from "@/components/pages/verification";
 // hooks
 import { usePageOperations } from "@/hooks/use-page-operations";
 // plane web hooks
@@ -32,6 +36,8 @@ export type TPageActions =
   | "copy-markdown"
   | "toggle-lock"
   | "toggle-access"
+  | "verify"
+  | "unverify"
   | "open-in-new-tab"
   | "copy-link"
   | "make-a-copy"
@@ -53,7 +59,9 @@ export const PageActions = observer(function PageActions(props: Props) {
   const { extraOptions, optionsOrder, page, parentRef, storeType } = props;
   // states
   const [deletePageModal, setDeletePageModal] = useState(false);
-  const [movePageModal, setMovePageModal] = useState(false);
+  const [, setMovePageModal] = useState(false);
+  const [verifyPageModal, setVerifyPageModal] = useState(false);
+  const { t } = useTranslation();
   // params
   const { workspaceSlug } = useParams();
   // page flag
@@ -75,7 +83,26 @@ export const PageActions = observer(function PageActions(props: Props) {
     canCurrentUserDuplicatePage,
     canCurrentUserLockPage,
     canCurrentUserMovePage,
+    canCurrentUserVerifyPage,
   } = page;
+  const isVerified = getPageVerificationStatus(page).status !== "none";
+
+  const handleUnverify = useCallback(async () => {
+    try {
+      await page.unverify();
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
+        title: t("page_verification.toast.success_title"),
+        message: t("page_verification.toast.unverified"),
+      });
+    } catch (_error) {
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: t("page_verification.toast.error_title"),
+        message: t("page_verification.toast.unverify_error"),
+      });
+    }
+  }, [page, t]);
   // menu items
   const MENU_ITEMS = useMemo(
     function MENU_ITEMS() {
@@ -97,6 +124,22 @@ export const PageActions = observer(function PageActions(props: Props) {
           title: access === EPageAccess.PUBLIC ? "Make private" : "Make public",
           icon: access === EPageAccess.PUBLIC ? LockIcon : GlobeIcon,
           shouldRender: canCurrentUserChangeAccess && !archived_at,
+        },
+        {
+          key: "verify",
+          action: () => setVerifyPageModal(true),
+          title: isVerified ? t("page_verification.reverify") : t("page_verification.verify"),
+          icon: BadgeCheck,
+          shouldRender: canCurrentUserVerifyPage,
+        },
+        {
+          key: "unverify",
+          action: () => {
+            void handleUnverify();
+          },
+          title: t("page_verification.unverify"),
+          icon: BadgeX,
+          shouldRender: canCurrentUserVerifyPage && isVerified,
         },
         {
           key: "open-in-new-tab",
@@ -163,8 +206,12 @@ export const PageActions = observer(function PageActions(props: Props) {
       canCurrentUserArchivePage,
       canCurrentUserDeletePage,
       canCurrentUserMovePage,
+      canCurrentUserVerifyPage,
+      handleUnverify,
+      isVerified,
       isMovePageEnabled,
       pageOperations,
+      t,
     ]
   );
   // arrange options
@@ -184,6 +231,7 @@ export const PageActions = observer(function PageActions(props: Props) {
         page={page}
         storeType={storeType}
       />
+      <VerifyPageModal isOpen={verifyPageModal} onClose={() => setVerifyPageModal(false)} page={page} />
       {parentRef && <ContextMenu parentRef={parentRef} items={arrangedOptions} />}
       <CustomMenu placement="bottom-end" optionsClassName="max-h-[90vh]" ellipsis closeOnSelect>
         {arrangedOptions.map((item) => {

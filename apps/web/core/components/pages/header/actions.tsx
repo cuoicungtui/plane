@@ -15,6 +15,7 @@ import { PageArchivedBadge } from "./archived-badge";
 import { PageCopyLinkControl } from "./copy-link-control";
 import { PageFavoriteControl } from "./favorite-control";
 import { PageOfflineBadge } from "./offline-badge";
+import { PageVerifiedBadge } from "../verification";
 import { PageLockControl } from "./lock-control";
 
 type Props = {
@@ -28,6 +29,7 @@ export const PageHeaderActions = observer(function PageHeaderActions(props: Prop
   return (
     <div className="flex items-center gap-1">
       <PageArchivedBadge page={page} />
+      <PageVerifiedBadge page={page} />
       <PageOfflineBadge page={page} />
       <PageLockControl page={page} />
       <PageCopyLinkControl page={page} />

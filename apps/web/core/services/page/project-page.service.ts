@@ -6,7 +6,13 @@
 
 // types
 import { API_BASE_URL } from "@plane/constants";
-import type { TDocumentPayload, TPage, TPagePositionPayload, TPagePositionResponse } from "@plane/types";
+import type {
+  TDocumentPayload,
+  TPage,
+  TPagePositionPayload,
+  TPagePositionResponse,
+  TPageVerification,
+} from "@plane/types";
 // helpers
 // services
 import { APIService } from "@/services/api.service";
@@ -144,6 +150,29 @@ export class ProjectPageService extends APIService {
 
   async unlock(workspaceSlug: string, projectId: string, pageId: string): Promise<void> {
     return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/lock/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async verify(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    expiresAt: string | null
+  ): Promise<TPageVerification> {
+    return this.post(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/verify/`, {
+      expires_at: expiresAt,
+    })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async unverify(workspaceSlug: string, projectId: string, pageId: string): Promise<void> {
+    return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/verify/`)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

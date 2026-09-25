@@ -21,6 +21,7 @@ import type { EPageStoreType } from "@/hooks/store";
 import type { TPageInstance } from "@/store/pages/base-page";
 // local imports
 import { PageActions } from "../dropdowns";
+import { PageVerifiedBadge } from "../verification";
 
 export const HOVER_ONLY_CLASS = "lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover:opacity-100";
 
@@ -47,6 +48,7 @@ export const BlockItemAction = observer(function BlockItemAction(props: Props) {
     <>
       {/* owner and time of the last edit: always visible, like the columns of a Notion database */}
       <div className="flex cursor-default items-center gap-2">
+        <PageVerifiedBadge page={page} variant="compact" />
         <Tooltip tooltipHeading={t("page_tree.owned_by")} tooltipContent={ownerDetails?.display_name}>
           <Avatar src={getFileURL(ownerDetails?.avatar_url ?? "")} name={ownerDetails?.display_name} />
         </Tooltip>
@@ -82,6 +84,8 @@ export const BlockItemAction = observer(function BlockItemAction(props: Props) {
             "open-in-new-tab",
             "copy-link",
             "make-a-copy",
+            "verify",
+            "unverify",
             "toggle-lock",
             "toggle-access",
             "archive-restore",

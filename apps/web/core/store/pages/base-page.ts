@@ -9,7 +9,7 @@ import { action, computed, makeObservable, observable, reaction, runInAction } f
 // plane imports
 import { EPageAccess } from "@plane/constants";
 import type { TChangeHandlerProps } from "@plane/propel/emoji-icon-picker";
-import type { TDocumentPayload, TLogoProps, TNameDescriptionLoader, TPage } from "@plane/types";
+import type { TDocumentPayload, TLogoProps, TNameDescriptionLoader, TPage, TPageVerification } from "@plane/types";
 // plane web store
 import { ExtendedBasePage } from "@/store/pages/extended-base-page";
 import type { RootStore } from "@/store/root.store";
@@ -35,6 +35,8 @@ export type TBasePage = TPage & {
   makePrivate: (params: { shouldSync?: boolean }) => Promise<void>;
   lock: (params: { shouldSync?: boolean; recursive?: boolean }) => Promise<void>;
   unlock: (params: { shouldSync?: boolean; recursive?: boolean }) => Promise<void>;
+  verify: (expiresAt: string | null) => Promise<void>;
+  unverify: () => Promise<void>;
   archive: (params: { shouldSync?: boolean; archived_at?: string | null }) => Promise<void>;
   restore: (params: { shouldSync?: boolean }) => Promise<void>;
   updatePageLogo: (value: TChangeHandlerProps) => Promise<void>;
@@ -52,6 +54,7 @@ export type TBasePagePermissions = {
   canCurrentUserEditPage: boolean;
   canCurrentUserDuplicatePage: boolean;
   canCurrentUserLockPage: boolean;
+  canCurrentUserVerifyPage: boolean;
   canCurrentUserChangeAccess: boolean;
   canCurrentUserArchivePage: boolean;
   canCurrentUserDeletePage: boolean;
@@ -66,6 +69,8 @@ export type TBasePageServices = {
   updateAccess: (payload: Pick<TPage, "access">) => Promise<void>;
   lock: () => Promise<void>;
   unlock: () => Promise<void>;
+  verify: (expiresAt: string | null) => Promise<TPageVerification>;
+  unverify: () => Promise<void>;
   archive: () => Promise<{
     archived_at: string;
   }>;
@@ -106,6 +111,9 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
   deleted_at: Date | undefined;
   parent: string | null | undefined;
   sort_order: number | undefined;
+  verified_at: string | null | undefined;
+  verified_by: string | null | undefined;
+  verify_expires_at: string | null | undefined;
   // helpers
   oldName: string = "";
   // services
@@ -146,6 +154,9 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
     this.deleted_at = page?.deleted_at || undefined;
     this.parent = page?.parent ?? null;
     this.sort_order = page?.sort_order;
+    this.verified_at = page?.verified_at;
+    this.verified_by = page?.verified_by;
+    this.verify_expires_at = page?.verify_expires_at;
 
     makeObservable(this, {
       // loaders
@@ -172,6 +183,9 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       deleted_at: observable.ref,
       parent: observable.ref,
       sort_order: observable.ref,
+      verified_at: observable.ref,
+      verified_by: observable.ref,
+      verify_expires_at: observable.ref,
       isSyncingWithServer: observable.ref,
       // helpers
       oldName: observable.ref,
@@ -188,6 +202,8 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       makePrivate: action,
       lock: action,
       unlock: action,
+      verify: action,
+      unverify: action,
       archive: action,
       restore: action,
       updatePageLogo: action,
@@ -250,6 +266,9 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       deleted_at: this.deleted_at,
       parent: this.parent,
       sort_order: this.sort_order,
+      verified_at: this.verified_at,
+      verified_by: this.verified_by,
+      verify_expires_at: this.verify_expires_at,
       ...this.asJSONExtended,
     };
   }
@@ -409,6 +428,42 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
         throw error;
       });
     }
+  };
+
+  /**
+   * @description verify the page, or extend its verification; `null` means it never expires
+   */
+  verify = async (expiresAt: string | null) => {
+    const verification = await this.services.verify(expiresAt);
+    runInAction(() => {
+      this.verified_at = verification.verified_at;
+      this.verified_by = verification.verified_by;
+      this.verify_expires_at = verification.verify_expires_at;
+    });
+  };
+
+  /**
+   * @description remove the verification of the page
+   */
+  unverify = async () => {
+    const previous = {
+      verified_at: this.verified_at,
+      verified_by: this.verified_by,
+      verify_expires_at: this.verify_expires_at,
+    };
+    runInAction(() => {
+      this.verified_at = null;
+      this.verified_by = null;
+      this.verify_expires_at = null;
+    });
+    await this.services.unverify().catch((error) => {
+      runInAction(() => {
+        this.verified_at = previous.verified_at;
+        this.verified_by = previous.verified_by;
+        this.verify_expires_at = previous.verify_expires_at;
+      });
+      throw error;
+    });
   };
 
   /**

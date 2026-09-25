@@ -299,5 +299,31 @@
     "private": "Riêng tư",
     "created_on": "Tạo ngày {date}",
     "updated": "Sửa {time}"
+  },
+  "page_verification": {
+    "verified": "Đã xác minh",
+    "verified_until": "Đã xác minh đến {date}",
+    "expired": "Xác minh đã hết hạn",
+    "verified_by": "{name} xác minh ngày {date}",
+    "expires_on": "Hết hạn ngày {date}",
+    "expired_on": "Đã hết hạn ngày {date}",
+    "never_expires": "Không hết hạn",
+    "verify": "Xác minh trang",
+    "reverify": "Xác minh lại",
+    "unverify": "Bỏ xác minh",
+    "modal_title": "Xác minh trang này",
+    "modal_description": "Cho người đọc biết nội dung “{name}” là chính xác. Hết thời hạn đã chọn, huy hiệu sẽ chuyển thành lời nhắc xem lại.",
+    "duration_days": "{count} ngày",
+    "until": "đến {date}",
+    "no_expiry": "Không hết hạn",
+    "confirm": "Xác minh",
+    "toast": {
+      "success_title": "Thành công!",
+      "error_title": "Lỗi!",
+      "verified": "Trang đã được xác minh.",
+      "unverified": "Đã bỏ xác minh.",
+      "verify_error": "Không thể xác minh trang. Vui lòng thử lại.",
+      "unverify_error": "Không thể bỏ xác minh. Vui lòng thử lại."
+    }
   }
 }

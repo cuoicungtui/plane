@@ -48,15 +48,15 @@ export const orderPages = (
 
   if (sortByKey === "name") {
     orderedPages = sortBy(pages, [(m) => m.name?.toLowerCase()]);
-    if (sortByOrder === "desc") orderedPages = orderedPages.reverse();
+    if (sortByOrder === "desc") orderedPages = orderedPages.toReversed();
   }
   if (sortByKey === "created_at") {
     orderedPages = sortBy(pages, [(m) => m.created_at]);
-    if (sortByOrder === "desc") orderedPages = orderedPages.reverse();
+    if (sortByOrder === "desc") orderedPages = orderedPages.toReversed();
   }
   if (sortByKey === "updated_at") {
     orderedPages = sortBy(pages, [(m) => m.updated_at]);
-    if (sortByOrder === "desc") orderedPages = orderedPages.reverse();
+    if (sortByOrder === "desc") orderedPages = orderedPages.toReversed();
   }
 
   return orderedPages;
@@ -95,4 +95,30 @@ export const getPageName = (name: string | undefined) => {
   if (name === undefined) return "";
   if (!name || name.trim() === "") return "Untitled";
   return name;
+};
+
+export type TPageVerificationStatus = {
+  status: "none" | "verified" | "expired";
+  /** whole days from today to the expiry date; negative once expired, `null` when it never expires */
+  daysLeft: number | null;
+};
+
+const toLocalDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/**
+ * @description a verified page stays valid through its expiry date (`YYYY-MM-DD`) and expires the day after; a page
+ * verified without an expiry date never expires
+ */
+export const getPageVerificationStatus = (
+  page: Pick<TPage, "verified_at" | "verify_expires_at">,
+  today: Date = new Date()
+): TPageVerificationStatus => {
+  if (!page.verified_at) return { status: "none", daysLeft: null };
+  if (!page.verify_expires_at) return { status: "verified", daysLeft: null };
+  const [year, month, day] = page.verify_expires_at.split("-").map(Number);
+  const expiry = new Date(year, month - 1, day);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const daysLeft = Math.round((expiry.getTime() - startOfToday.getTime()) / 86_400_000);
+  return { status: toLocalDateKey(startOfToday) > page.verify_expires_at ? "expired" : "verified", daysLeft };
 };
