@@ -1,9 +1,10 @@
 import { ThemeColorMode } from "@plait/core";
 import type { PlaitBoard, PlaitTheme, Viewport } from "@plait/core";
 import { useCallback, useMemo, useRef } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement } from "react";
+import type { CSSProperties, PointerEvent, ReactElement } from "react";
 import { Board, Wrapper } from "./react-board";
 import type { WhiteboardImages } from "./images";
+import { guardNativeKeyDefaults } from "./native-key-guard";
 import { DEFAULT_WHITEBOARD_LABELS, createWhiteboardOptions, createWhiteboardPlugins } from "./plugins";
 import type { WhiteboardLabels } from "./plugins";
 import { sceneFromBoard } from "./scene";
@@ -48,20 +49,6 @@ export type WhiteboardCanvasProps = {
   images?: WhiteboardImages;
   className?: string;
   style?: CSSProperties;
-};
-
-// Plait handles undo/redo from a window listener but never calls preventDefault(), so the
-// browser also fires a native `beforeinput historyUndo` on the enclosing rich-text host and
-// undoes text typed in the page. Block that default unless a text field inside the board
-// owns the keystroke.
-const blockNativeUndoOutsideBoardText = (event: KeyboardEvent<HTMLDivElement>) => {
-  const isUndoRedo = (event.ctrlKey || event.metaKey) && ["z", "y"].includes(event.key.toLowerCase());
-  if (!isUndoRedo) return;
-  // `closest` must stop at the board: the whole board sits inside the editor's own
-  // contenteditable host, which would otherwise always match.
-  const textField = (event.target as HTMLElement).closest?.('[contenteditable="true"]');
-  const inBoardTextField = !!textField && event.currentTarget.contains(textField);
-  if (!inBoardTextField) event.preventDefault();
 };
 
 // The board only receives keyboard and clipboard events aimed inside this element (see the scope
@@ -141,7 +128,7 @@ export function WhiteboardCanvas({
       data-whiteboard-scope=""
       style={{ width: "100%", height: "100%", outline: "none" }}
       onPointerDown={focusOnPointerDown}
-      onKeyDown={blockNativeUndoOutsideBoardText}
+      onKeyDown={guardNativeKeyDefaults}
     >
       <Wrapper
         key={readOnly ? "ro" : "rw"}
