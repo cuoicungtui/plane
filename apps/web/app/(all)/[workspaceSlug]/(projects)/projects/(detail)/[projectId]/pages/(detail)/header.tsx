@@ -10,7 +10,7 @@ import { useParams } from "next/navigation";
 import { PageIcon } from "@plane/propel/icons";
 import type { ICustomSearchSelectOption } from "@plane/types";
 import { Breadcrumbs, Header, BreadcrumbNavigationSearchDropdown } from "@plane/ui";
-import { getPageName } from "@plane/utils";
+import { getPageAncestors, getPageName } from "@plane/utils";
 // components
 import { BreadcrumbLink } from "@/components/common/breadcrumb-link";
 import { PageAccessIcon } from "@/components/common/page-access-icon";
@@ -35,13 +35,17 @@ export const PageDetailsHeader = observer(function PageDetailsHeader() {
   const { workspaceSlug, pageId, projectId } = useParams();
   // store hooks
   const { loader } = useProject();
-  const { getPageById, getCurrentProjectPageIds } = usePageStore(storeType);
+  const { getPageById, getCurrentProjectPageIds, getProjectPageTree } = usePageStore(storeType);
   const page = usePage({
     pageId: pageId?.toString() ?? "",
     storeType,
   });
   // derived values
   const projectPageIds = getCurrentProjectPageIds(projectId?.toString());
+  const { ancestorIds, hasHiddenAncestor } = getPageAncestors(
+    getProjectPageTree(projectId?.toString() ?? ""),
+    pageId?.toString() ?? ""
+  );
 
   const switcherOptions = projectPageIds
     .map((id) => {
@@ -77,7 +81,20 @@ export const PageDetailsHeader = observer(function PageDetailsHeader() {
                 />
               }
             />
-
+            {hasHiddenAncestor && (
+              <Breadcrumbs.Item key="hidden-ancestors" component={<BreadcrumbLink label="…" disableTooltip />} />
+            )}
+            {ancestorIds.map((ancestorId) => (
+              <Breadcrumbs.Item
+                key={ancestorId}
+                component={
+                  <BreadcrumbLink
+                    label={getPageName(getPageById(ancestorId)?.name)}
+                    href={`/${workspaceSlug}/projects/${projectId}/pages/${ancestorId}`}
+                  />
+                }
+              />
+            ))}
             <Breadcrumbs.Item
               component={
                 <BreadcrumbNavigationSearchDropdown
