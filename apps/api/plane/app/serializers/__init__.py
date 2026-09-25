@@ -103,6 +103,7 @@ from .page import (
     PageVersionSerializer,
     PageBinaryUpdateSerializer,
     PageVersionDetailSerializer,
+    PagePositionSerializer,
 )
 from .whiteboard import PageWhiteboardSerializer, WorkspaceWhiteboardLibrarySerializer
 

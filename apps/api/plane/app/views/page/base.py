@@ -22,6 +22,8 @@ from django.db.models import (
     Case,
     When,
     IntegerField,
+    FloatField,
+    Max,
 )
 from django.http import StreamingHttpResponse
 from django.contrib.postgres.aggregates import ArrayAgg
@@ -38,6 +40,7 @@ from plane.app.serializers import (
     PageSerializer,
     PageDetailSerializer,
     PageBinaryUpdateSerializer,
+    PagePositionSerializer,
 )
 from plane.db.models import (
     Page,
@@ -76,6 +79,150 @@ def unarchive_archive_page_and_descendants(page_id, archived_at):
         cursor.execute(sql, [page_id, archived_at])
 
 
+def is_page_or_ancestor(page_id, candidate_id):
+    """Return True if candidate_id is page_id itself or one of its ancestors."""
+    # UNION (not UNION ALL) stops on a pre-existing cycle in the data
+    sql = """
+    WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id FROM pages WHERE id = %s
+        UNION
+        SELECT pages.id, pages.parent_id FROM pages, ancestors WHERE pages.id = ancestors.parent_id
+    )
+    SELECT 1 FROM ancestors WHERE id = %s LIMIT 1;
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [page_id, candidate_id])
+        return cursor.fetchone() is not None
+
+
+def validate_page_parent(slug, project_id, user, parent, page=None):
+    """Return an error message if parent cannot hold page (None for a new page), else None."""
+    parent_in_scope = (
+        Page.objects.filter(
+            pk=parent.id,
+            workspace__slug=slug,
+            project_pages__project_id=project_id,
+            project_pages__deleted_at__isnull=True,
+        )
+        .filter(Q(owned_by=user) | Q(access=Page.PUBLIC_ACCESS))
+        .exists()
+    )
+    if not parent_in_scope:
+        return "The parent page does not exist in this project"
+    if parent.archived_at is not None:
+        return "A page cannot be added under an archived page"
+    if page is not None and is_page_or_ancestor(parent.id, page.id):
+        return "A page cannot be moved under itself or one of its sub-pages"
+    return None
+
+
+def next_page_sort_order(project_id, parent_id):
+    """Sort order that places a page after its last sibling in the project."""
+    last = Page.objects.filter(
+        parent_id=parent_id,
+        project_pages__project_id=project_id,
+        project_pages__deleted_at__isnull=True,
+    ).aggregate(Max("sort_order"))["sort_order__max"]
+    return Page.DEFAULT_SORT_ORDER if last is None else last + Page.DEFAULT_SORT_ORDER
+
+
+# Two-key advisory locks never share a key with the single-key lock Issue.save takes on the project id
+PAGE_TREE_LOCK_NAMESPACE = 0x50414745  # "PAGE"
+
+# Neighbours closer than this are renumbered instead of splitting the gap again
+MIN_SORT_ORDER_GAP = 1e-6
+
+
+def lock_page_tree(project_id):
+    """Serialize changes to the project's page tree until the current transaction ends."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+            [PAGE_TREE_LOCK_NAMESPACE, str(project_id)],
+        )
+
+
+def get_page_siblings(project_id, parent_id, exclude_page_id):
+    """(id, sort_order) of the pages under parent_id in the project, in tree order.
+
+    Includes pages the caller cannot see, so every user gets the same order.
+    """
+    return list(
+        Page.objects.filter(
+            parent_id=parent_id,
+            project_pages__project_id=project_id,
+            project_pages__deleted_at__isnull=True,
+        )
+        .exclude(pk=exclude_page_id)
+        .order_by("sort_order", "created_at", "id")
+        .values_list("id", "sort_order")
+    )
+
+
+def sort_orders_at(siblings, index, count):
+    """Return (sort_orders, renumbered) that puts `count` new pages at index among the ordered siblings.
+
+    sort_orders has `count` values, in the order the new pages should keep between themselves.
+    renumbered maps sibling id to its new sort_order when the siblings had to be spaced out.
+    """
+    lo = siblings[index - 1][1] if index > 0 else None
+    hi = siblings[index][1] if index < len(siblings) else None
+    if lo is None and hi is None:
+        return [Page.DEFAULT_SORT_ORDER * (i + 1) for i in range(count)], {}
+    if hi is None:
+        return [lo + Page.DEFAULT_SORT_ORDER * (i + 1) for i in range(count)], {}
+    if lo is None:
+        return [hi - Page.DEFAULT_SORT_ORDER * (count - i) for i in range(count)], {}
+    span = hi - lo
+    if span >= MIN_SORT_ORDER_GAP:
+        step = span / (count + 1)
+        return [lo + step * (i + 1) for i in range(count)], {}
+
+    # No room between the neighbours: space every sibling out again, leaving a slot at index
+    renumbered = {}
+    for position, (sibling_id, old_order) in enumerate(siblings):
+        new_order = Page.DEFAULT_SORT_ORDER * (position + 1 if position < index else position + 1 + count)
+        if new_order != old_order:
+            renumbered[sibling_id] = new_order
+    return [Page.DEFAULT_SORT_ORDER * (index + 1 + i) for i in range(count)], renumbered
+
+
+def sort_order_at(siblings, index):
+    """Return (sort_order, renumbered) that puts a page at index among the ordered siblings."""
+    sort_orders, renumbered = sort_orders_at(siblings, index, 1)
+    return sort_orders[0], renumbered
+
+
+def slot_after_page(project_id, page_id):
+    """Return (parent_id, sort_order, renumbered) placing a new page right after page_id among its siblings.
+
+    Falls back to the end of the root if page_id's parent is archived, or the end of
+    the sibling group if page_id is no longer among them (moved or deleted mid-request).
+    """
+    source = Page.objects.filter(pk=page_id).values("parent_id").first()
+    parent_id = source["parent_id"] if source else None
+    if parent_id is not None:
+        parent = Page.objects.filter(pk=parent_id).values("archived_at").first()
+        if parent is None or parent["archived_at"] is not None:
+            return None, next_page_sort_order(project_id, None), {}
+
+    siblings = list(
+        Page.objects.filter(
+            parent_id=parent_id,
+            project_pages__project_id=project_id,
+            project_pages__deleted_at__isnull=True,
+        )
+        .order_by("sort_order", "created_at", "id")
+        .values_list("id", "sort_order")
+    )
+    source_index = next((i for i, (sibling_id, _) in enumerate(siblings) if sibling_id == page_id), None)
+    if source_index is None:
+        return parent_id, next_page_sort_order(project_id, parent_id), {}
+
+    sort_order, renumbered = sort_order_at(siblings, source_index + 1)
+    return parent_id, sort_order, renumbered
+
+
 class PageViewSet(BaseViewSet):
     serializer_class = PageSerializer
     model = Page
@@ -98,7 +245,6 @@ class PageViewSet(BaseViewSet):
                 projects__project_projectmember__is_active=True,
                 projects__archived_at__isnull=True,
             )
-            .filter(parent__isnull=True)
             .filter(Q(owned_by=self.request.user) | Q(access=0))
             .prefetch_related("projects")
             .select_related("workspace")
@@ -143,7 +289,12 @@ class PageViewSet(BaseViewSet):
         )
 
         if serializer.is_valid():
-            serializer.save()
+            parent = serializer.validated_data.get("parent")
+            if parent is not None:
+                error = validate_page_parent(slug, project_id, request.user, parent)
+                if error:
+                    return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save(sort_order=next_page_sort_order(project_id, parent.id if parent else None))
             # capture the page transaction
             page_transaction.delay(
                 new_description_html=request.data.get("description_html", "<p></p>"),
@@ -167,15 +318,6 @@ class PageViewSet(BaseViewSet):
             if page.is_locked:
                 return Response({"error": "Page is locked"}, status=status.HTTP_400_BAD_REQUEST)
 
-            parent = request.data.get("parent", None)
-            if parent:
-                _ = Page.objects.get(
-                    pk=parent,
-                    workspace__slug=slug,
-                    projects__id=project_id,
-                    project_pages__deleted_at__isnull=True,
-                )
-
             # Only update access if the page owner is the requesting  user
             if page.access != request.data.get("access", page.access) and page.owned_by_id != request.user.id:
                 return Response(
@@ -186,7 +328,31 @@ class PageViewSet(BaseViewSet):
             serializer = PageDetailSerializer(page, data=request.data, partial=True)
             page_description = page.description_html
             if serializer.is_valid():
-                serializer.save()
+                with transaction.atomic():
+                    extra_fields = {}
+                    new_parent = serializer.validated_data.get("parent")
+                    new_parent_id = new_parent.id if new_parent else None
+                    parent_changing = "parent" in serializer.validated_data and new_parent_id != page.parent_id
+                    if parent_changing:
+                        # Same lock as the position endpoint, so two moves cannot build a cycle together
+                        lock_page_tree(project_id)
+                        if new_parent is not None:
+                            error = validate_page_parent(slug, project_id, request.user, new_parent, page=page)
+                            if error:
+                                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+                        extra_fields["sort_order"] = next_page_sort_order(project_id, new_parent_id)
+                    else:
+                        # Row lock, re-read: a plain save() would otherwise rewrite every column,
+                        # clobbering a drag-and-drop move that landed after this request fetched `page`
+                        current = (
+                            Page.objects.select_for_update()
+                            .filter(pk=page.id)
+                            .values("parent_id", "sort_order")
+                            .first()
+                        )
+                        extra_fields["parent_id"] = current["parent_id"]
+                        extra_fields["sort_order"] = current["sort_order"]
+                    serializer.save(**extra_fields)
                 # capture the page transaction
                 if request.data.get("description_html"):
                     page_transaction.delay(
@@ -205,6 +371,9 @@ class PageViewSet(BaseViewSet):
 
     def retrieve(self, request, slug, project_id, page_id=None):
         page = self.get_queryset().filter(pk=page_id).first()
+        if page is None:
+            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
+
         project = Project.objects.get(pk=project_id)
         track_visit = request.query_params.get("track_visit", "true").lower() == "true"
 
@@ -229,23 +398,84 @@ class PageViewSet(BaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if page is None:
-            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            issue_ids = PageLog.objects.filter(page_id=page_id, entity_name="issue").values_list(
-                "entity_identifier", flat=True
+        issue_ids = PageLog.objects.filter(page_id=page_id, entity_name="issue").values_list(
+            "entity_identifier", flat=True
+        )
+        data = PageDetailSerializer(page).data
+        data["issue_ids"] = issue_ids
+        if track_visit:
+            recent_visited_task.delay(
+                slug=slug,
+                entity_name="page",
+                entity_identifier=page_id,
+                user_id=request.user.id,
+                project_id=project_id,
             )
-            data = PageDetailSerializer(page).data
-            data["issue_ids"] = issue_ids
-            if track_visit:
-                recent_visited_task.delay(
-                    slug=slug,
-                    entity_name="page",
-                    entity_identifier=page_id,
-                    user_id=request.user.id,
-                    project_id=project_id,
+        return Response(data, status=status.HTTP_200_OK)
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    def position(self, request, slug, project_id, page_id):
+        # ProjectPagePermission lets an owner through whatever the role, so guests are stopped above
+        serializer = PagePositionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        parent_id = serializer.validated_data["parent_id"]
+        prev_sibling_id = serializer.validated_data["prev_sibling_id"]
+
+        with transaction.atomic():
+            lock_page_tree(project_id)
+            page = Page.objects.get(
+                pk=page_id,
+                workspace__slug=slug,
+                project_pages__project_id=project_id,
+                project_pages__deleted_at__isnull=True,
+            )
+            if page.is_locked:
+                return Response({"error": "Page is locked"}, status=status.HTTP_400_BAD_REQUEST)
+            if page.archived_at is not None:
+                return Response({"error": "An archived page cannot be moved"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # The current parent is not checked again, so a page under a parent the user cannot see can be reordered
+            if parent_id is not None and parent_id != page.parent_id:
+                parent = Page.objects.filter(pk=parent_id).first()
+                error = (
+                    validate_page_parent(slug, project_id, request.user, parent, page=page)
+                    if parent is not None
+                    else "The parent page does not exist in this project"
                 )
-            return Response(data, status=status.HTTP_200_OK)
+                if error:
+                    return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+            siblings = get_page_siblings(project_id, parent_id, page.id)
+            sibling_ids = [sibling_id for sibling_id, _ in siblings]
+            if prev_sibling_id is not None and prev_sibling_id not in sibling_ids:
+                return Response(
+                    {"error": "The previous page is not a sub-page of the target parent"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            index = 0 if prev_sibling_id is None else sibling_ids.index(prev_sibling_id) + 1
+            sort_order, renumbered = sort_order_at(siblings, index)
+
+            if renumbered:
+                Page.objects.filter(pk__in=renumbered.keys()).update(
+                    sort_order=Case(
+                        *[When(pk=sibling_id, then=Value(value)) for sibling_id, value in renumbered.items()],
+                        output_field=FloatField(),
+                    )
+                )
+            page.parent_id = parent_id
+            page.sort_order = sort_order
+            page.save(update_fields=["parent", "sort_order"])
+
+        return Response(
+            {
+                "id": str(page.id),
+                "parent": str(parent_id) if parent_id else None,
+                "sort_order": sort_order,
+                "renumbered": {str(sibling_id): value for sibling_id, value in renumbered.items()},
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def lock(self, request, slug, project_id, page_id):
         page = Page.objects.get(
@@ -294,6 +524,9 @@ class PageViewSet(BaseViewSet):
 
     def list(self, request, slug, project_id):
         queryset = self.get_queryset()
+        # Sub-pages are only returned to clients that render the page tree
+        if request.query_params.get("include_children", "false").lower() != "true":
+            queryset = queryset.filter(parent__isnull=True)
         project = Project.objects.get(pk=project_id)
         if (
             ProjectMember.objects.filter(
@@ -397,15 +630,59 @@ class PageViewSet(BaseViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # remove parent from all the children
-        _ = Page.objects.filter(
-            parent_id=page_id,
-            projects__id=project_id,
-            workspace__slug=slug,
-            project_pages__deleted_at__isnull=True,
-        ).update(parent=None)
+        with transaction.atomic():
+            lock_page_tree(project_id)
+            # Re-read under the lock: the page may have just been moved
+            locked_page = Page.objects.select_for_update().get(pk=page_id)
+            grandparent_id = locked_page.parent_id
 
-        page.delete()
+            # Children in tree order, including archived ones (a page must be archived,
+            # recursively, before it can be deleted, so its children are archived too)
+            children = list(
+                Page.objects.filter(
+                    parent_id=page_id,
+                    projects__id=project_id,
+                    workspace__slug=slug,
+                    project_pages__deleted_at__isnull=True,
+                )
+                .order_by("sort_order", "created_at", "id")
+                .values_list("id", flat=True)
+            )
+
+            if children:
+                # The deleted page's own slot among ITS siblings (under the grandparent):
+                # the page is still in the DB here, so this list still includes it.
+                siblings_with_page = list(
+                    Page.objects.filter(
+                        parent_id=grandparent_id,
+                        project_pages__project_id=project_id,
+                        project_pages__deleted_at__isnull=True,
+                    )
+                    .order_by("sort_order", "created_at", "id")
+                    .values_list("id", "sort_order")
+                )
+                index = next(i for i, (sibling_id, _) in enumerate(siblings_with_page) if sibling_id == page_id)
+                siblings = [sibling for sibling in siblings_with_page if sibling[0] != page_id]
+
+                sort_orders, renumbered = sort_orders_at(siblings, index, len(children))
+
+                if renumbered:
+                    Page.objects.filter(pk__in=renumbered.keys()).update(
+                        sort_order=Case(
+                            *[When(pk=sibling_id, then=Value(value)) for sibling_id, value in renumbered.items()],
+                            output_field=FloatField(),
+                        )
+                    )
+                # Reparent before delete: `parent` is CASCADE, so deleting first would take the children with it
+                Page.objects.filter(pk__in=children).update(
+                    parent_id=grandparent_id,
+                    sort_order=Case(
+                        *[When(pk=child_id, then=Value(order)) for child_id, order in zip(children, sort_orders)],
+                        output_field=FloatField(),
+                    ),
+                )
+
+            page.delete()
         # Delete the user favorite page
         UserFavorite.objects.filter(
             project=project_id,
@@ -603,7 +880,11 @@ class PageDuplicateEndpoint(BaseAPIView):
             source_json = deepcopy(source.description_json)
             project_ids = list(ProjectPage.objects.filter(page_id=source.id).values_list("project_id", flat=True))
             soup = BeautifulSoup(source_html, "html.parser")
-            referenced_ids = {node.get("board_identifier") for node in soup.find_all("whiteboard-embed-component") if node.get("board_identifier")}
+            referenced_ids = {
+                node.get("board_identifier")
+                for node in soup.find_all("whiteboard-embed-component")
+                if node.get("board_identifier")
+            }
             source_boards = list(PageWhiteboard.objects.select_for_update().filter(page=source, id__in=referenced_ids))
 
         inline_asset_ids = [node.get("src") for node in soup.find_all("image-component") if node.get("src")]
@@ -613,11 +894,31 @@ class PageDuplicateEndpoint(BaseAPIView):
         staged_assets = stage_assets(source.workspace, project_id, asset_ids)
         try:
             with transaction.atomic():
+                lock_page_tree(project_id)
+                parent_id, sort_order, renumbered = slot_after_page(project_id, source.id)
+                if renumbered:
+                    Page.objects.filter(pk__in=renumbered.keys()).update(
+                        sort_order=Case(
+                            *[When(pk=sibling_id, then=Value(value)) for sibling_id, value in renumbered.items()],
+                            output_field=FloatField(),
+                        )
+                    )
                 page = Page.objects.create(
-                    id=uuid.uuid4(), workspace=source.workspace, name=f"{source.name} (Copy)", description_html=source_html,
-                    description_json=source_json, description_binary=None, owned_by=request.user,
-                    access=source.access, color=source.color, view_props=deepcopy(source.view_props),
-                    logo_props=deepcopy(source.logo_props), created_by=request.user, updated_by=request.user,
+                    id=uuid.uuid4(),
+                    workspace=source.workspace,
+                    name=f"{source.name} (Copy)",
+                    description_html=source_html,
+                    description_json=source_json,
+                    description_binary=None,
+                    owned_by=request.user,
+                    access=source.access,
+                    color=source.color,
+                    view_props=deepcopy(source.view_props),
+                    logo_props=deepcopy(source.logo_props),
+                    created_by=request.user,
+                    updated_by=request.user,
+                    parent_id=parent_id,
+                    sort_order=sort_order,
                 )
                 for destination_project_id in project_ids:
                     ProjectPage.objects.create(
@@ -650,14 +951,23 @@ class PageDuplicateEndpoint(BaseAPIView):
                         node["board_identifier"] = board_map[board_id]
                         node["page_identifier"] = str(page.id)
                 page.description_html = str(soup)
-                page.description_json = self._remap_value(source_json, {**asset_map, **board_map, str(source.id): str(page.id)})
+                page.description_json = self._remap_value(
+                    source_json, {**asset_map, **board_map, str(source.id): str(page.id)}
+                )
                 page.save()
         except Exception:
             cleanup_copied_assets(source, staged_assets)
             raise
 
         page_transaction.delay(new_description_html=page.description_html, old_description_html=None, page_id=page.id)
-        page = Page.objects.filter(pk=page.id).annotate(
-            project_ids=Coalesce(ArrayAgg("projects__id", distinct=True, filter=~Q(projects__id=True)), Value([], output_field=ArrayField(UUIDField())))
-        ).first()
+        page = (
+            Page.objects.filter(pk=page.id)
+            .annotate(
+                project_ids=Coalesce(
+                    ArrayAgg("projects__id", distinct=True, filter=~Q(projects__id=True)),
+                    Value([], output_field=ArrayField(UUIDField())),
+                )
+            )
+            .first()
+        )
         return Response(PageDetailSerializer(page).data, status=status.HTTP_201_CREATED)

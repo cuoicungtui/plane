@@ -55,8 +55,10 @@ class PageSerializer(BaseSerializer):
             "logo_props",
             "label_ids",
             "project_ids",
+            "sort_order",
         ]
-        read_only_fields = ["workspace", "owned_by"]
+        # sort_order only changes through the page position endpoint
+        read_only_fields = ["workspace", "owned_by", "sort_order"]
 
     def create(self, validated_data):
         labels = validated_data.pop("labels", None)
@@ -124,6 +126,13 @@ class PageSerializer(BaseSerializer):
             )
 
         return super().update(instance, validated_data)
+
+
+class PagePositionSerializer(serializers.Serializer):
+    """Target of a page move: null parent_id is the root, null prev_sibling_id is the first slot"""
+
+    parent_id = serializers.UUIDField(allow_null=True)
+    prev_sibling_id = serializers.UUIDField(allow_null=True)
 
 
 class PageDetailSerializer(PageSerializer):
