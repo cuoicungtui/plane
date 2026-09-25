@@ -191,6 +191,7 @@ export function PageWhiteboardEmbed({
               // Keyed by board id and load, not revision: the revision bumps on every autosave and would
               // remount (and visibly flicker) the canvas after each edit.
               key={`${board.id}:${loadCount}`}
+              boardId={boardId}
               scene={board.scene}
               readOnly={readOnly}
               workspaceSlug={workspaceSlug}

@@ -21,10 +21,15 @@ export type TPageEditorInstance = {
   assetsList: TEditorAsset[];
   editorRef: EditorRefApi | null;
   commentDraft: TPageCommentDraft | null;
-  focusedCommentAnchor: { anchorType: TPageCommentAnchorType; anchorId: string; nonce: number } | null;
+  focusedCommentAnchor: {
+    anchorType: TPageCommentAnchorType;
+    anchorId: string;
+    anchorBoardId?: string;
+    nonce: number;
+  } | null;
   // actions
   setCommentDraft: (draft: TPageCommentDraft | null) => void;
-  focusCommentAnchor: (anchorType: TPageCommentAnchorType, anchorId: string) => void;
+  focusCommentAnchor: (anchorType: TPageCommentAnchorType, anchorId: string, anchorBoardId?: string) => void;
   setEditorRef: (editorRef: EditorRefApi | null) => void;
   updateAssetsList: (assets: TEditorAsset[]) => void;
 };
@@ -67,7 +72,7 @@ export class PageEditorInstance implements TPageEditorInstance {
     this.commentDraft = draft;
   };
 
-  focusCommentAnchor: TPageEditorInstance["focusCommentAnchor"] = (anchorType, anchorId) => {
-    this.focusedCommentAnchor = { anchorType, anchorId, nonce: Date.now() };
+  focusCommentAnchor: TPageEditorInstance["focusCommentAnchor"] = (anchorType, anchorId, anchorBoardId) => {
+    this.focusedCommentAnchor = { anchorType, anchorId, anchorBoardId, nonce: Date.now() };
   };
 }

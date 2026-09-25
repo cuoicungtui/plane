@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { PAGE_COMMENT_REQUEST_EVENT } from "@plane/editor";
+import type { TPageCommentAnchorEventDetail } from "@plane/editor";
 import { useTranslation } from "@plane/i18n";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import { EFileAssetType } from "@plane/types";
@@ -16,12 +18,15 @@ import {
   canUndoWhiteboard,
   createEmptyScene,
   fitWhiteboard,
+  getSingleSelectedWhiteboardElementId,
   getWhiteboardZoom,
+  hasWhiteboardElement,
   insertWhiteboardImages,
   isWhiteboardScene,
   readWhiteboardSelection,
   redoWhiteboard,
   resetWhiteboardZoom,
+  selectWhiteboardElement,
   setWhiteboardTool,
   undoWhiteboard,
   whiteboardSelectionEquals,
@@ -38,6 +43,12 @@ import type {
 
 import { useEditorAsset } from "@/hooks/store/use-editor-asset";
 import { useFileSize } from "@/hooks/use-file-size";
+import {
+  notifyCommentBoardsChanged,
+  registerCommentBoard,
+  useBoardComments,
+} from "@/components/pages/comments/board-comments";
+import { WhiteboardCommentBadges } from "./whiteboard-comment-badges";
 import { WhiteboardPropertyBar } from "./whiteboard-property-bar";
 import { WhiteboardToolbar } from "./whiteboard-toolbar";
 
@@ -59,6 +70,8 @@ const IMAGE_ERROR_KEYS: Record<WhiteboardImageError, string> = {
 };
 
 type Props = {
+  /** Comments on the whiteboard's elements are stored against this ID. */
+  boardId: string;
   /** The stored scene. It is read once; the canvas owns the live state afterwards. */
   scene: Record<string, unknown>;
   readOnly: boolean;
@@ -72,6 +85,7 @@ type Props = {
 };
 
 export default function PageWhiteboardBoard({
+  boardId,
   scene,
   readOnly,
   workspaceSlug,
@@ -90,6 +104,52 @@ export default function PageWhiteboardBoard({
   const [selection, setSelection] = useState<WhiteboardSelection>(EMPTY_WHITEBOARD_SELECTION);
   const [view, setView] = useState({ zoom: 1, canUndo: false, canRedo: false });
   const [initialScene] = useState(() => toInitialScene(scene));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [, setFrame] = useState(0);
+  const frameRef = useRef<number | null>(null);
+  const { enabled: commentsEnabled, counts: commentCounts } = useBoardComments(pageId, boardId);
+  const hasBadgesRef = useRef(false);
+  hasBadgesRef.current = commentsEnabled && Object.keys(commentCounts).length > 0;
+
+  // Badges sit on elements, so they are drawn again after the board changes; one render per frame at most.
+  const scheduleBadgeFrame = useCallback(() => {
+    if (!hasBadgesRef.current || frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      setFrame((value) => value + 1);
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!readyBoard) return;
+    return registerCommentBoard(boardId, {
+      hasElement: (elementId) => hasWhiteboardElement(readyBoard, elementId),
+      locateElement: (elementId) => {
+        if (!selectWhiteboardElement(readyBoard, elementId)) return false;
+        rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        setSelection(readWhiteboardSelection(readyBoard));
+        return true;
+      },
+    });
+  }, [boardId, readyBoard]);
+
+  const commentOnSelection = () => {
+    const board = boardRef.current;
+    const elementId = board && getSingleSelectedWhiteboardElementId(board);
+    if (!elementId) return;
+    window.dispatchEvent(
+      new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
+        detail: { anchorType: "board_element", anchorId: elementId, anchorBoardId: boardId },
+      })
+    );
+  };
 
   const uploadImage = useCallback(
     async (file: File) => {
@@ -146,18 +206,22 @@ export default function PageWhiteboardBoard({
   }
 
   // Runs after every Plait change; each snapshot is compared first so an unchanged one causes no render.
-  const syncSnapshots = useCallback((board: PlaitBoard) => {
-    const next = readWhiteboardSelection(board);
-    setSelection((current) => (whiteboardSelectionEquals(current, next) ? current : next));
-    const zoom = getWhiteboardZoom(board);
-    const canUndo = canUndoWhiteboard(board);
-    const canRedo = canRedoWhiteboard(board);
-    setView((current) =>
-      current.zoom === zoom && current.canUndo === canUndo && current.canRedo === canRedo
-        ? current
-        : { zoom, canUndo, canRedo }
-    );
-  }, []);
+  const syncSnapshots = useCallback(
+    (board: PlaitBoard) => {
+      const next = readWhiteboardSelection(board);
+      setSelection((current) => (whiteboardSelectionEquals(current, next) ? current : next));
+      scheduleBadgeFrame();
+      const zoom = getWhiteboardZoom(board);
+      const canUndo = canUndoWhiteboard(board);
+      const canRedo = canRedoWhiteboard(board);
+      setView((current) =>
+        current.zoom === zoom && current.canUndo === canUndo && current.canRedo === canRedo
+          ? current
+          : { zoom, canUndo, canRedo }
+      );
+    },
+    [scheduleBadgeFrame]
+  );
 
   const withBoard = (action: (board: PlaitBoard) => void) => () => {
     const board = boardRef.current;
@@ -179,7 +243,7 @@ export default function PageWhiteboardBoard({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div ref={rootRef} className="flex h-full flex-col">
       {!readOnly && (
         <WhiteboardToolbar
           activeTool={activeTool}
@@ -201,15 +265,25 @@ export default function PageWhiteboardBoard({
       <div className="relative min-h-0 flex-1">
         {!readOnly && readyBoard && (
           <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
-            <WhiteboardPropertyBar board={readyBoard} selection={selection} />
+            <WhiteboardPropertyBar
+              board={readyBoard}
+              selection={selection}
+              onComment={commentsEnabled ? commentOnSelection : undefined}
+            />
           </div>
+        )}
+        {commentsEnabled && readyBoard && (
+          <WhiteboardCommentBadges board={readyBoard} boardId={boardId} counts={commentCounts} />
         )}
         <WhiteboardCanvas
           initialScene={initialScene}
           readOnly={readOnly}
           labels={labels}
           images={images}
-          onSceneChange={onSceneChange}
+          onSceneChange={(next) => {
+            onSceneChange(next);
+            notifyCommentBoardsChanged();
+          }}
           onChange={syncSnapshots}
           onToolChange={setActiveTool}
           onReady={(board) => {

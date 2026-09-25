@@ -13,6 +13,11 @@ import { setToast, TOAST_TYPE } from "@plane/propel/toast";
 import { EUserProjectRoles } from "@plane/types";
 import { cn } from "@plane/utils";
 // components
+import {
+  hasCommentBoardElement,
+  locateCommentBoardElement,
+  useCommentBoardsRevision,
+} from "@/components/pages/comments/board-comments";
 import { CommentComposer } from "@/components/pages/comments/comment-composer";
 import { PageCommentThread } from "@/components/pages/comments/comment-thread";
 import { pageCommentService, usePageComments } from "@/components/pages/comments/use-page-comments";
@@ -38,6 +43,8 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
   } = page;
   const [filter, setFilter] = useState<TFilter>("open");
   const [, setTick] = useState(0);
+  // whiteboards report element changes here, since they are not part of the editor document
+  useCommentBoardsRevision();
   const threadRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
@@ -74,6 +81,7 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
       ({ root }) =>
         root.anchor_type === focusedCommentAnchor.anchorType &&
         root.anchor_id === focusedCommentAnchor.anchorId &&
+        (root.anchor_board_id || undefined) === (focusedCommentAnchor.anchorBoardId || undefined) &&
         !root.resolved_at
     );
     if (!target) return;
@@ -88,12 +96,17 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
 
   // rerenders after the document changes (see setTick), so the flags always reflect the current blocks
   const orphanFlags = new Map(
-    threads.map(({ root }) => [
-      root.id,
-      !!editorRef &&
-        (root.anchor_type === "block" || root.anchor_type === "text") &&
-        !editorRef.hasCommentAnchor(root.anchor_type, root.anchor_id),
-    ])
+    threads.map(({ root }) => {
+      if (root.anchor_type === "board_element") {
+        return [root.id, hasCommentBoardElement(root.anchor_board_id, root.anchor_id) === false] as const;
+      }
+      return [
+        root.id,
+        !!editorRef &&
+          (root.anchor_type === "block" || root.anchor_type === "text") &&
+          !editorRef.hasCommentAnchor(root.anchor_type, root.anchor_id),
+      ] as const;
+    })
   );
 
   if (!workspaceSlug || !projectId || !pageId) return null;
@@ -183,7 +196,8 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
             isOrphan={orphanFlags.get(thread.root.id) ?? false}
             canComment={canComment}
             onLocate={() => {
-              const { anchor_type, anchor_id } = thread.root;
+              const { anchor_type, anchor_id, anchor_board_id } = thread.root;
+              if (anchor_type === "board_element") locateCommentBoardElement(anchor_board_id, anchor_id);
               if (anchor_type === "block" || anchor_type === "text")
                 editorRef?.scrollToCommentAnchor(anchor_type, anchor_id);
             }}

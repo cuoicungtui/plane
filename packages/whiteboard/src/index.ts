@@ -92,6 +92,12 @@ export type {
   WhiteboardTextAlign,
   WhiteboardTextMark,
 } from "./properties";
+export {
+  getSingleSelectedWhiteboardElementId,
+  getWhiteboardElementClientPoint,
+  hasWhiteboardElement,
+  selectWhiteboardElement,
+} from "./comments";
 export { WHITEBOARD_EXPORT_TIMEOUT_MS, exportWhiteboardPng, exportWhiteboardSvg } from "./export";
 export type { WhiteboardExportOptions } from "./export";
 export { renderWhiteboardPng } from "./render-png";

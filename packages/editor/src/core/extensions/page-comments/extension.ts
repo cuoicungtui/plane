@@ -14,8 +14,10 @@ export const PAGE_COMMENT_OPEN_EVENT = "plane:page-comment-open";
 export const PAGE_COMMENT_REQUEST_EVENT = "plane:page-comment-request";
 
 export type TPageCommentAnchorEventDetail = {
-  anchorType: "block" | "text";
+  anchorType: "block" | "text" | "board_element";
   anchorId: string;
+  /** The whiteboard an element belongs to; only set for `board_element`. */
+  anchorBoardId?: string;
   quote?: string;
 };
 

@@ -16,6 +16,17 @@ export const groupCommentThreads = (comments: TPageComment[]): TCommentThread[] 
   return comments.filter((comment) => !comment.parent).map((root) => ({ root, replies: replies.get(root.id) ?? [] }));
 };
 
+/** Unresolved threads on whiteboard elements, counted per element and grouped by whiteboard. */
+export const countOpenBoardElementThreads = (threads: TCommentThread[]): Record<string, Record<string, number>> => {
+  const counts: Record<string, Record<string, number>> = {};
+  threads.forEach(({ root }) => {
+    if (root.resolved_at || root.anchor_type !== "board_element" || !root.anchor_board_id) return;
+    const board = (counts[root.anchor_board_id] ??= {});
+    board[root.anchor_id] = (board[root.anchor_id] ?? 0) + 1;
+  });
+  return counts;
+};
+
 /** Number of unresolved threads per anchor id, for one kind of anchor. */
 export const countOpenThreadsByAnchor = (
   threads: TCommentThread[],

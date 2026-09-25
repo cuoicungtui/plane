@@ -17,7 +17,8 @@ import { useQueryParams } from "@/hooks/use-query-params";
 import type { TPageInstance } from "@/store/pages/base-page";
 // local imports
 import { PAGE_NAVIGATION_PANE_TABS_QUERY_PARAM } from "../navigation-pane";
-import { countOpenThreadsByAnchor } from "./thread-utils";
+import { clearBoardCommentCounts, setBoardCommentCounts } from "./board-comments";
+import { countOpenBoardElementThreads, countOpenThreadsByAnchor } from "./thread-utils";
 import { usePageComments } from "./use-page-comments";
 
 type Props = {
@@ -48,13 +49,18 @@ export const PageCommentsController = observer(function PageCommentsController(p
       if (commentDraft?.anchorType === "text" && commentDraft.anchorId !== detail.anchorId) {
         editorRef?.removeCommentMark(commentDraft.anchorId);
       }
-      setCommentDraft({ anchorType: detail.anchorType, anchorId: detail.anchorId, quote: detail.quote });
+      setCommentDraft({
+        anchorType: detail.anchorType,
+        anchorId: detail.anchorId,
+        anchorBoardId: detail.anchorBoardId,
+        quote: detail.quote,
+      });
       openCommentsTab();
     };
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<TPageCommentAnchorEventDetail>).detail;
       if (!detail?.anchorId) return;
-      focusCommentAnchor(detail.anchorType, detail.anchorId);
+      focusCommentAnchor(detail.anchorType, detail.anchorId, detail.anchorBoardId);
       openCommentsTab();
     };
     window.addEventListener(PAGE_COMMENT_REQUEST_EVENT, onRequest);
@@ -71,6 +77,18 @@ export const PageCommentsController = observer(function PageCommentsController(p
       texts: countOpenThreadsByAnchor(threads, "text"),
     });
   }, [editorRef, threads]);
+
+  useEffect(() => {
+    const pageId = page.id;
+    if (!pageId) return;
+    setBoardCommentCounts(pageId, countOpenBoardElementThreads(threads));
+  }, [page.id, threads]);
+
+  useEffect(() => {
+    const pageId = page.id;
+    if (!pageId) return;
+    return () => clearBoardCommentCounts(pageId);
+  }, [page.id]);
 
   return null;
 });

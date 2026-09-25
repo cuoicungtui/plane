@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { TPageComment } from "@plane/types";
-import { countOpenThreadsByAnchor, groupCommentThreads } from "./thread-utils";
+import { countOpenBoardElementThreads, countOpenThreadsByAnchor, groupCommentThreads } from "./thread-utils";
 
 const comment = (overrides: Partial<TPageComment>): TPageComment =>
   ({
@@ -61,5 +61,25 @@ describe("countOpenThreadsByAnchor", () => {
     expect(countOpenThreadsByAnchor(threads, "block")).toEqual({ b1: 2, b2: 1 });
     expect(countOpenThreadsByAnchor(threads, "text")).toEqual({ t1: 1 });
     expect(countOpenThreadsByAnchor(threads, "board_element")).toEqual({});
+  });
+});
+
+describe("countOpenBoardElementThreads", () => {
+  it("groups unresolved element threads by whiteboard, ignoring other anchors and resolved threads", () => {
+    const threads = groupCommentThreads([
+      comment({ id: "1", anchor_type: "board_element", anchor_id: "e1", anchor_board_id: "boardA" }),
+      comment({ id: "2", anchor_type: "board_element", anchor_id: "e1", anchor_board_id: "boardA" }),
+      comment({ id: "3", anchor_type: "board_element", anchor_id: "e2", anchor_board_id: "boardB" }),
+      comment({
+        id: "4",
+        anchor_type: "board_element",
+        anchor_id: "e3",
+        anchor_board_id: "boardA",
+        resolved_at: "2026-01-02T00:00:00Z",
+      }),
+      comment({ id: "5", anchor_type: "block", anchor_id: "b1", anchor_board_id: "boardA" }),
+    ]);
+    expect(countOpenBoardElementThreads(threads)).toEqual({ boardA: { e1: 2 }, boardB: { e2: 1 } });
+    expect(countOpenBoardElementThreads([])).toEqual({});
   });
 });

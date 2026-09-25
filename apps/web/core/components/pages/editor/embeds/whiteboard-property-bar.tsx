@@ -18,6 +18,7 @@ import {
   BringToFront,
   Copy,
   Italic,
+  MessageSquare,
   AlignCenter,
   PaintBucket,
   SendToBack,
@@ -108,10 +109,12 @@ const ALL_SHAPES: readonly WhiteboardShape[] = [...WHITEBOARD_BASIC_SHAPES, ...W
 type Props = {
   board: PlaitBoard;
   selection: WhiteboardSelection;
+  /** Starts a comment on the selected element; the button is offered only for a single selection. */
+  onComment?: () => void;
 };
 
 /** Contextual formatting for whatever is selected; renders nothing while the selection is empty. */
-export function WhiteboardPropertyBar({ board, selection }: Props) {
+export function WhiteboardPropertyBar({ board, selection, onComment }: Props) {
   const { t } = useTranslation();
   const label = (name: string) => t(`page_whiteboard.props.${name}`);
 
@@ -334,6 +337,11 @@ export function WhiteboardPropertyBar({ board, selection }: Props) {
         </>
       )}
 
+      {onComment && selection.count === 1 && (
+        <ControlButton label={label("comment")} onClick={onComment}>
+          <MessageSquare className="size-4" />
+        </ControlButton>
+      )}
       <ControlButton label={label("duplicate")} onClick={() => duplicateWhiteboardSelection(board)}>
         <Copy className="size-4" />
       </ControlButton>
