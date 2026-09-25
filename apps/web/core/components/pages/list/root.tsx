@@ -5,15 +5,13 @@
  */
 
 import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
 // types
 import type { TPageNavigationTabs } from "@plane/types";
-// components
-import { ListLayout } from "@/components/core/list";
 // plane web hooks
 import type { EPageStoreType } from "@/hooks/store";
-import { usePageStore } from "@/hooks/store";
 // local imports
-import { PageListBlock } from "./block";
+import { PagesTreeRoot } from "../tree/root";
 
 type TPagesListRoot = {
   pageType: TPageNavigationTabs;
@@ -22,17 +20,7 @@ type TPagesListRoot = {
 
 export const PagesListRoot = observer(function PagesListRoot(props: TPagesListRoot) {
   const { pageType, storeType } = props;
-  // store hooks
-  const { getCurrentProjectFilteredPageIdsByTab } = usePageStore(storeType);
-  // derived values
-  const filteredPageIds = getCurrentProjectFilteredPageIdsByTab(pageType);
+  const { projectId } = useParams();
 
-  if (!filteredPageIds) return <></>;
-  return (
-    <ListLayout>
-      {filteredPageIds.map((pageId) => (
-        <PageListBlock key={pageId} pageId={pageId} storeType={storeType} />
-      ))}
-    </ListLayout>
-  );
+  return <PagesTreeRoot key={projectId?.toString()} pageType={pageType} storeType={storeType} />;
 });

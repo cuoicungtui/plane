@@ -21,7 +21,6 @@ import type { EPageStoreType } from "@/hooks/store";
 // local imports
 import { PageAppliedFiltersList } from "../list/applied-filters";
 import { PageFiltersSelection } from "../list/filters";
-import { PageOrderByDropdown } from "../list/order-by";
 import { PageSearchInput } from "../list/search-input";
 import { PageTabNavigation } from "../list/tab-navigation";
 
@@ -68,14 +67,6 @@ export const PagesListHeaderRoot = observer(function PagesListHeaderRoot(props: 
           <PageSearchInput
             searchQuery={filters.searchQuery}
             updateSearchQuery={(val) => updateFilters("searchQuery", val)}
-          />
-          <PageOrderByDropdown
-            sortBy={filters.sortBy}
-            sortKey={filters.sortKey}
-            onChange={(val) => {
-              if (val.key) updateFilters("sortKey", val.key);
-              if (val.order) updateFilters("sortBy", val.order);
-            }}
           />
           <FiltersDropdown
             icon={<ListFilter className="h-3 w-3" />}

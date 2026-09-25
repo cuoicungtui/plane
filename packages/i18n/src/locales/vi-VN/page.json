@@ -154,5 +154,15 @@
       "mind_central": "Chủ đề trung tâm",
       "mind_summary": "Tóm tắt"
     }
+  },
+  "page_tree": {
+    "label": "Cây trang",
+    "expand": "Mở rộng",
+    "collapse": "Thu gọn",
+    "drag": "Kéo để di chuyển trang",
+    "add_child": "Thêm trang con",
+    "create_error": "Không thể tạo trang con. Vui lòng thử lại.",
+    "move_error": "Không thể di chuyển trang. Vui lòng thử lại.",
+    "hidden_pages": "Các trang bạn không xem được"
   }
 }

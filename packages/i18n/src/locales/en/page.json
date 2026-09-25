@@ -154,5 +154,15 @@
       "mind_central": "Central topic",
       "mind_summary": "Summary"
     }
+  },
+  "page_tree": {
+    "label": "Page tree",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "drag": "Drag to move the page",
+    "add_child": "Add a sub-page",
+    "create_error": "Could not create the sub-page. Please try again.",
+    "move_error": "Could not move the page. Please try again.",
+    "hidden_pages": "Pages you cannot see"
   }
 }
