@@ -36,6 +36,12 @@ export type WhiteboardCanvasProps = {
    */
   onToolChange?: (tool: WhiteboardTool) => void;
   /**
+   * Called after every Plait change, selection, zoom and scroll included, with the live board.
+   * A toolbar reads what it shows (selection, zoom, undo state) from it; compare with the last value
+   * you kept and skip repeats, because this fires often.
+   */
+  onChange?: (board: PlaitBoard) => void;
+  /**
    * Placeholder text for new elements (English by default). Applies to elements
    * created after a change; existing text is never rewritten.
    */
@@ -65,6 +71,7 @@ export function WhiteboardCanvas({
   onSceneChange,
   onReady,
   onToolChange,
+  onChange,
   labels,
   images,
   className,
@@ -78,6 +85,8 @@ export function WhiteboardCanvas({
   onReadyRef.current = onReady;
   const onToolChangeRef = useRef(onToolChange);
   onToolChangeRef.current = onToolChange;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const labelsRef = useRef<WhiteboardLabels>({ ...DEFAULT_WHITEBOARD_LABELS, ...labels });
   labelsRef.current = { ...DEFAULT_WHITEBOARD_LABELS, ...labels };
   const imagesRef = useRef(images);
@@ -118,7 +127,9 @@ export function WhiteboardCanvas({
 
   const syncTool = useCallback(() => {
     const board = boardRef.current;
-    if (board) onToolChangeRef.current?.(whiteboardToolFromBoard(board));
+    if (!board) return;
+    onToolChangeRef.current?.(whiteboardToolFromBoard(board));
+    onChangeRef.current?.(board);
   }, []);
 
   return (

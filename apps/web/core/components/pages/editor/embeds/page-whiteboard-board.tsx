@@ -4,70 +4,47 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
-import {
-  Circle,
-  CornerDownRight,
-  Diamond,
-  Hand,
-  ImagePlus,
-  MousePointer2,
-  MoveUpRight,
-  Network,
-  RectangleHorizontal,
-  Square,
-  Triangle,
-  Type,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useTranslation } from "@plane/i18n";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import { EFileAssetType } from "@plane/types";
-import { cn, getEditorAssetSrc } from "@plane/utils";
+import { getEditorAssetSrc } from "@plane/utils";
 import {
-  WHITEBOARD_IMAGE_TYPES,
+  EMPTY_WHITEBOARD_SELECTION,
   WhiteboardCanvas,
+  canRedoWhiteboard,
+  canUndoWhiteboard,
   createEmptyScene,
+  fitWhiteboard,
+  getWhiteboardZoom,
   insertWhiteboardImages,
   isWhiteboardScene,
+  readWhiteboardSelection,
+  redoWhiteboard,
+  resetWhiteboardZoom,
   setWhiteboardTool,
+  undoWhiteboard,
+  whiteboardSelectionEquals,
+  zoomWhiteboard,
 } from "@plane/whiteboard";
 import type {
   PlaitBoard,
   WhiteboardImageError,
   WhiteboardImages,
   WhiteboardScene,
+  WhiteboardSelection,
   WhiteboardTool,
 } from "@plane/whiteboard";
 
 import { useEditorAsset } from "@/hooks/store/use-editor-asset";
 import { useFileSize } from "@/hooks/use-file-size";
+import { WhiteboardPropertyBar } from "./whiteboard-property-bar";
+import { WhiteboardToolbar } from "./whiteboard-toolbar";
 
 /**
  * Everything that needs Plait lives here, so `page-whiteboard-embed.tsx` can load this file lazily:
  * a page without a whiteboard never downloads the drawing engine.
  */
-
-type TToolButton = { tool: WhiteboardTool; labelKey: string; icon: LucideIcon };
-
-// Navigation tools first, then everything that places something on the board.
-const NAVIGATION_TOOLS: TToolButton[] = [
-  { tool: "select", labelKey: "page_whiteboard.tools.select", icon: MousePointer2 },
-  { tool: "hand", labelKey: "page_whiteboard.tools.hand", icon: Hand },
-];
-
-const CREATION_TOOLS: TToolButton[] = [
-  { tool: "mind", labelKey: "page_whiteboard.tools.mind", icon: Network },
-  { tool: "text", labelKey: "page_whiteboard.tools.text", icon: Type },
-  { tool: "rectangle", labelKey: "page_whiteboard.tools.rectangle", icon: Square },
-  { tool: "roundRectangle", labelKey: "page_whiteboard.tools.round_rectangle", icon: RectangleHorizontal },
-  { tool: "ellipse", labelKey: "page_whiteboard.tools.ellipse", icon: Circle },
-  { tool: "diamond", labelKey: "page_whiteboard.tools.diamond", icon: Diamond },
-  { tool: "triangle", labelKey: "page_whiteboard.tools.triangle", icon: Triangle },
-  { tool: "arrow", labelKey: "page_whiteboard.tools.arrow", icon: MoveUpRight },
-  { tool: "elbowArrow", labelKey: "page_whiteboard.tools.elbow_arrow", icon: CornerDownRight },
-];
 
 // A board created empty stores `{}`-like data; anything else that is not a v2 scene is not ours to overwrite.
 const toInitialScene = (scene: Record<string, unknown>): WhiteboardScene | null => {
@@ -107,9 +84,11 @@ export default function PageWhiteboardBoard({
   const { uploadEditorAsset } = useEditorAsset();
   const { maxFileSize } = useFileSize();
   const boardRef = useRef<PlaitBoard | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [readyBoard, setReadyBoard] = useState<PlaitBoard | null>(null);
   const [activeTool, setActiveTool] = useState<WhiteboardTool>("select");
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [selection, setSelection] = useState<WhiteboardSelection>(EMPTY_WHITEBOARD_SELECTION);
+  const [view, setView] = useState({ zoom: 1, canUndo: false, canRedo: false });
   const [initialScene] = useState(() => toInitialScene(scene));
 
   const uploadImage = useCallback(
@@ -166,6 +145,27 @@ export default function PageWhiteboardBoard({
     );
   }
 
+  // Runs after every Plait change; each snapshot is compared first so an unchanged one causes no render.
+  const syncSnapshots = useCallback((board: PlaitBoard) => {
+    const next = readWhiteboardSelection(board);
+    setSelection((current) => (whiteboardSelectionEquals(current, next) ? current : next));
+    const zoom = getWhiteboardZoom(board);
+    const canUndo = canUndoWhiteboard(board);
+    const canRedo = canRedoWhiteboard(board);
+    setView((current) =>
+      current.zoom === zoom && current.canUndo === canUndo && current.canRedo === canRedo
+        ? current
+        : { zoom, canUndo, canRedo }
+    );
+  }, []);
+
+  const withBoard = (action: (board: PlaitBoard) => void) => () => {
+    const board = boardRef.current;
+    if (!board) return;
+    action(board);
+    syncSnapshots(board);
+  };
+
   const pickTool = (tool: WhiteboardTool) => {
     const board = boardRef.current;
     if (!board) return;
@@ -173,85 +173,49 @@ export default function PageWhiteboardBoard({
     setActiveTool(tool);
   };
 
-  const handleFilesPicked = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    // Reset so that picking the same file again still fires `change`.
-    event.target.value = "";
+  const pickImages = (files: File[]) => {
     const board = boardRef.current;
-    if (board && files.length > 0) void insertWhiteboardImages(board, files);
-  };
-
-  const renderTool = ({ tool, labelKey, icon: Icon }: TToolButton) => {
-    const label = t(labelKey);
-    const active = activeTool === tool;
-    return (
-      <button
-        key={tool}
-        type="button"
-        title={label}
-        aria-label={label}
-        aria-pressed={active}
-        className={cn(
-          "grid size-7 shrink-0 place-items-center rounded-sm",
-          active ? "bg-accent-subtle text-accent-primary" : "text-secondary hover:bg-layer-transparent-hover"
-        )}
-        onClick={() => pickTool(tool)}
-      >
-        <Icon className="size-4" />
-      </button>
-    );
+    if (board) void insertWhiteboardImages(board, files);
   };
 
   return (
     <div className="flex h-full flex-col">
       {!readOnly && (
-        <div
-          role="toolbar"
-          aria-label={t("page_whiteboard.toolbar")}
-          className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-subtle px-2 py-1"
-        >
-          {NAVIGATION_TOOLS.map(renderTool)}
-          <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-layer-3" />
-          {CREATION_TOOLS.map(renderTool)}
-          {canAddImages && (
-            <>
-              <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-layer-3" />
-              <button
-                type="button"
-                title={t("page_whiteboard.tools.image")}
-                aria-label={t("page_whiteboard.tools.image")}
-                className="grid size-7 shrink-0 place-items-center rounded-sm text-secondary hover:bg-layer-transparent-hover"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImagePlus className="size-4" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                multiple
-                accept={WHITEBOARD_IMAGE_TYPES.join(",")}
-                onChange={handleFilesPicked}
-              />
-            </>
-          )}
-          {uploadingCount > 0 && (
-            <span role="status" className="text-xs ml-2 shrink-0 text-tertiary">
-              {t("page_whiteboard.image.uploading")}
-            </span>
-          )}
-        </div>
+        <WhiteboardToolbar
+          activeTool={activeTool}
+          zoom={view.zoom}
+          canUndo={view.canUndo}
+          canRedo={view.canRedo}
+          canAddImages={canAddImages}
+          uploading={uploadingCount > 0}
+          onPickTool={pickTool}
+          onUndo={withBoard(undoWhiteboard)}
+          onRedo={withBoard(redoWhiteboard)}
+          onZoomIn={withBoard((b) => zoomWhiteboard(b, "in"))}
+          onZoomOut={withBoard((b) => zoomWhiteboard(b, "out"))}
+          onZoomReset={withBoard(resetWhiteboardZoom)}
+          onFit={withBoard(fitWhiteboard)}
+          onPickImages={pickImages}
+        />
       )}
       <div className="relative min-h-0 flex-1">
+        {!readOnly && readyBoard && (
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
+            <WhiteboardPropertyBar board={readyBoard} selection={selection} />
+          </div>
+        )}
         <WhiteboardCanvas
           initialScene={initialScene}
           readOnly={readOnly}
           labels={labels}
           images={images}
           onSceneChange={onSceneChange}
+          onChange={syncSnapshots}
           onToolChange={setActiveTool}
           onReady={(board) => {
             boardRef.current = board;
+            setReadyBoard(board);
+            syncSnapshots(board);
           }}
         />
       </div>

@@ -92,6 +92,9 @@ describe.skipIf(!existsSync(join(webRoot, "package.json")))("apps/web keeps the 
       "app/(all)/whiteboard-export/page.tsx",
       // The lazy chunk. Its only importer must be the `lazy(() => import(...))` in the embed (next test).
       "core/components/pages/editor/embeds/page-whiteboard-board.tsx",
+      // The board's own toolbar and property bar: imported only by the lazy board above, so they ride in its chunk.
+      "core/components/pages/editor/embeds/whiteboard-property-bar.tsx",
+      "core/components/pages/editor/embeds/whiteboard-toolbar.tsx",
     ]);
   });
 

@@ -1,36 +1,47 @@
 import { BoardCreationMode, setCreationMode } from "@plait/common";
 import { BoardTransforms, PlaitPointerType } from "@plait/core";
 import type { PlaitBoard } from "@plait/core";
-import { ArrowLineShape, BasicShapes } from "@plait/draw";
+import { ArrowLineShape, BasicShapes, FlowchartSymbols } from "@plait/draw";
 import { MindPointerType } from "@plait/mind";
+
+/** Basic shapes offered in the shape picker (the text box is its own tool). */
+export const WHITEBOARD_BASIC_SHAPES = Object.values(BasicShapes).filter(
+  (shape) => shape !== BasicShapes.text
+) as Exclude<BasicShapes, BasicShapes.text>[];
+
+/** Flowchart symbols offered in the shape picker. */
+export const WHITEBOARD_FLOWCHART_SHAPES = Object.values(FlowchartSymbols) as FlowchartSymbols[];
+
+/** The value of a shape enum member, which is also its Plait pointer type and the `shape` of the element. */
+export type WhiteboardShape = `${Exclude<BasicShapes, BasicShapes.text>}` | `${FlowchartSymbols}`;
 
 export type WhiteboardTool =
   | "select"
   | "hand"
   | "mind"
   | "text"
-  | "rectangle"
-  | "roundRectangle"
-  | "ellipse"
-  | "diamond"
-  | "triangle"
   | "arrow"
-  | "elbowArrow";
+  | "elbowArrow"
+  | "curveArrow"
+  | WhiteboardShape;
 
-type CreationTool = Exclude<WhiteboardTool, "select" | "hand">;
+type NonShapeCreationTool = Exclude<WhiteboardTool, "select" | "hand" | WhiteboardShape>;
 
-/** Tools that place something when the user drags/clicks on the canvas. */
-const CREATION_POINTERS: Record<CreationTool, string> = {
+const SHAPE_TOOLS: ReadonlySet<string> = new Set<string>([...WHITEBOARD_BASIC_SHAPES, ...WHITEBOARD_FLOWCHART_SHAPES]);
+
+/** Tools that place something other than a shape when the user drags/clicks on the canvas. */
+const CREATION_POINTERS: Record<NonShapeCreationTool, string> = {
   mind: MindPointerType.mind,
   text: BasicShapes.text,
-  rectangle: BasicShapes.rectangle,
-  roundRectangle: BasicShapes.roundRectangle,
-  ellipse: BasicShapes.ellipse,
-  diamond: BasicShapes.diamond,
-  triangle: BasicShapes.triangle,
   arrow: ArrowLineShape.straight,
   elbowArrow: ArrowLineShape.elbow,
+  curveArrow: ArrowLineShape.curve,
 };
+
+export const isWhiteboardShape = (value: string): value is WhiteboardShape => SHAPE_TOOLS.has(value);
+
+const pointerForTool = (tool: NonShapeCreationTool | WhiteboardShape): string =>
+  isWhiteboardShape(tool) ? tool : CREATION_POINTERS[tool];
 
 /**
  * Switch the active tool.
@@ -48,7 +59,7 @@ export const setWhiteboardTool = (board: PlaitBoard, tool: WhiteboardTool): void
     BoardTransforms.updatePointerType(board, PlaitPointerType.hand);
     return;
   }
-  BoardTransforms.updatePointerType(board, CREATION_POINTERS[tool] as never);
+  BoardTransforms.updatePointerType(board, pointerForTool(tool) as never);
   setCreationMode(board, BoardCreationMode.drawing);
 };
 
@@ -60,6 +71,7 @@ export const setWhiteboardTool = (board: PlaitBoard, tool: WhiteboardTool): void
 export const whiteboardToolFromBoard = (board: PlaitBoard): WhiteboardTool => {
   const pointer = board.pointer as string;
   if (pointer === PlaitPointerType.hand) return "hand";
-  const creationTools = Object.keys(CREATION_POINTERS) as CreationTool[];
+  if (isWhiteboardShape(pointer)) return pointer;
+  const creationTools = Object.keys(CREATION_POINTERS) as NonShapeCreationTool[];
   return creationTools.find((tool) => CREATION_POINTERS[tool] === pointer) ?? "select";
 };
