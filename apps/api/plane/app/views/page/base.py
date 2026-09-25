@@ -511,6 +511,37 @@ class PageViewSet(BaseViewSet):
             "verify_expires_at": page.verify_expires_at,
         }
 
+    def backlinks(self, request, slug, project_id, page_id):
+        page = self.get_queryset().filter(pk=page_id).first()
+        if page is None:
+            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        project = Project.objects.get(pk=project_id)
+        is_restricted_guest = (
+            ProjectMember.objects.filter(
+                workspace__slug=slug, project_id=project_id, member=request.user, role=5, is_active=True
+            ).exists()
+            and not project.guest_view_all_features
+        )
+        if is_restricted_guest and page.owned_by != request.user:
+            return Response({"error": "You are not allowed to view this page"}, status=status.HTTP_400_BAD_REQUEST)
+
+        source_ids = (
+            PageLog.objects.filter(workspace__slug=slug, entity_name="page", entity_identifier=page_id)
+            .exclude(page_id=page_id)
+            .values_list("page_id", flat=True)
+        )
+        sources = self.get_queryset().filter(
+            pk__in=source_ids,
+            projects__id=project_id,
+            project_pages__deleted_at__isnull=True,
+            archived_at__isnull=True,
+        )
+        if is_restricted_guest:
+            sources = sources.filter(owned_by=request.user)
+        data = sources.order_by("-updated_at").values("id", "name", "logo_props", "updated_at").distinct()
+        return Response(list(data), status=status.HTTP_200_OK)
+
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
     def verify(self, request, slug, project_id, page_id):
         page = Page.objects.get(
