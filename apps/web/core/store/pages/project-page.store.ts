@@ -9,11 +9,18 @@ import { makeObservable, observable, runInAction, action, reaction, computed } f
 import { computedFn } from "mobx-utils";
 // types
 import { EUserPermissions } from "@plane/constants";
-import type { TPage, TPageFilters, TPageNavigationTabs } from "@plane/types";
+import type { TPage, TPageFilters, TPageNavigationTabs, TPagePositionPayload } from "@plane/types";
 import { EUserProjectRoles } from "@plane/types";
 // helpers
-import type { TPageTreeInput } from "@plane/utils";
-import { filterPagesByPageType, getPageName, orderPages, shouldFilterPage } from "@plane/utils";
+import type { TPageTree, TPageTreeInput } from "@plane/utils";
+import {
+  buildPageTree,
+  filterPagesByPageType,
+  getOptimisticSortOrder,
+  getPageName,
+  orderPages,
+  shouldFilterPage,
+} from "@plane/utils";
 // plane web constants
 // plane web store
 // services
@@ -49,6 +56,8 @@ export interface IProjectPageStore {
   getCurrentProjectFilteredPageIdsByTab: (pageType: TPageNavigationTabs) => string[] | undefined;
   getPageById: (pageId: string) => TProjectPage | undefined;
   getProjectPageTreeInput: (projectId: string) => TPageTreeInput[];
+  getCurrentProjectTabPageTree: (pageType: TPageNavigationTabs) => TPageTree;
+  getProjectPageTree: (projectId: string) => TPageTree;
   updateFilters: <T extends keyof TPageFilters>(filterKey: T, filterValue: TPageFilters[T]) => void;
   clearAllFilters: () => void;
   // actions
@@ -58,6 +67,12 @@ export interface IProjectPageStore {
     pageType?: TPageNavigationTabs
   ) => Promise<TPage[] | undefined>;
   refreshPageTree: (workspaceSlug: string, projectId: string) => Promise<void>;
+  updatePagePosition: (
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    position: TPagePositionPayload
+  ) => Promise<void>;
   fetchPageDetails: (
     workspaceSlug: string,
     projectId: string,
@@ -99,6 +114,7 @@ export class ProjectPageStore implements IProjectPageStore {
       // actions
       fetchPagesList: action,
       refreshPageTree: action,
+      updatePagePosition: action,
       fetchPageDetails: action,
       createPage: action,
       removePage: action,
@@ -206,6 +222,28 @@ export class ProjectPageStore implements IProjectPageStore {
     return input;
   });
 
+  /**
+   * @description tree of every page of a project that is not archived, with the real parent of each page
+   * @param {string} projectId
+   */
+  getProjectPageTree = computedFn(
+    (projectId: string): TPageTree => buildPageTree(this.getProjectPageTreeInput(projectId))
+  );
+
+  /**
+   * @description tree of the pages shown in a tab; a page whose parent is not in the tab is a root of the tab
+   * @param {TPageNavigationTabs} pageType
+   */
+  getCurrentProjectTabPageTree = computedFn((pageType: TPageNavigationTabs): TPageTree => {
+    const input: TPageTreeInput[] = [];
+    for (const pageId of this.getCurrentProjectPageIdsByTab(pageType) ?? []) {
+      const page = this.getPageById(pageId);
+      if (page)
+        input.push({ id: pageId, parent: page.parent, sort_order: page.sort_order, created_at: page.created_at });
+    }
+    return buildPageTree(input);
+  });
+
   updateFilters = <T extends keyof TPageFilters>(filterKey: T, filterValue: TPageFilters[T]) => {
     runInAction(() => {
       set(this.filters, [filterKey], filterValue);
@@ -279,6 +317,49 @@ export class ProjectPageStore implements IProjectPageStore {
       runInAction(() => this.upsertPages(pages));
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  /**
+   * @description move a page in the tree. The page is shown in its new place at once; if the request fails it goes
+   * back where it was and the error is thrown.
+   * @param {string} workspaceSlug
+   * @param {string} projectId
+   * @param {string} pageId
+   * @param {TPagePositionPayload} position
+   */
+  updatePagePosition = async (
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    position: TPagePositionPayload
+  ) => {
+    const page = this.getPageById(pageId);
+    if (!page) return;
+    const previous = { parent: page.parent, sort_order: page.sort_order };
+    const tree = this.getProjectPageTree(projectId);
+    const sortOrders: Record<string, number | undefined> = {};
+    for (const id of Object.keys(tree.parentIds)) sortOrders[id] = this.getPageById(id)?.sort_order;
+    runInAction(() => {
+      page.mutateProperties(
+        {
+          parent: position.parent_id,
+          sort_order: getOptimisticSortOrder(tree, sortOrders, { dragId: pageId, ...position }),
+        },
+        false
+      );
+    });
+    try {
+      const response = await this.service.updatePosition(workspaceSlug, projectId, pageId, position);
+      runInAction(() => {
+        page.mutateProperties({ parent: response.parent, sort_order: response.sort_order }, false);
+        for (const [id, sortOrder] of Object.entries(response.renumbered ?? {})) {
+          this.getPageById(id)?.mutateProperties({ sort_order: sortOrder }, false);
+        }
+      });
+    } catch (error) {
+      runInAction(() => page.mutateProperties(previous, false));
+      throw error;
     }
   };
 
