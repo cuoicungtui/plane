@@ -11,7 +11,16 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from plane.db.models import Page, PageComment, Project, ProjectMember, ProjectPage, User, WorkspaceMember
+from plane.db.models import (
+    Notification,
+    Page,
+    PageComment,
+    Project,
+    ProjectMember,
+    ProjectPage,
+    User,
+    WorkspaceMember,
+)
 
 
 def _url(slug, project_id, page_id, comment_id=None, resolve=False):
@@ -356,3 +365,110 @@ class TestEditDeleteResolve:
         page.delete()
 
         assert session_client.get(_url(workspace.slug, project.id, page.id)).status_code == status.HTTP_404_NOT_FOUND
+
+
+def _named_member(workspace, project, name, role=15):
+    user, client = _member(workspace, project, name, role)
+    user.display_name = name
+    user.save(update_fields=["display_name"])
+    return user, client
+
+
+def _notes(user):
+    return list(Notification.objects.filter(receiver=user, entity_name="page_comment"))
+
+
+@pytest.mark.contract
+class TestNotifications:
+    @pytest.mark.django_db
+    def test_reply_notifies_the_thread_participants_but_not_the_replier(self, workspace, project, page):
+        author, author_client = _named_member(workspace, project, "alice")
+        early, early_client = _named_member(workspace, project, "bob")
+        late, late_client = _named_member(workspace, project, "carol")
+        bystander, _ = _named_member(workspace, project, "dave")
+        url = _url(workspace.slug, project.id, page.id)
+        root = author_client.post(url, _block("Root"), format="json").json()
+        early_client.post(url, {"body": "First", "parent": root["id"]}, format="json")
+
+        late_client.post(url, {"body": "Second", "parent": root["id"]}, format="json")
+
+        assert [n.data["kind"] for n in _notes(author)] == ["reply", "reply"]
+        assert [n.data["kind"] for n in _notes(early)] == ["reply"]
+        assert _notes(late) == []
+        assert _notes(bystander) == []
+        note = _notes(early)[0]
+        assert note.data["page"]["id"] == str(page.id)
+        assert note.data["comment"]["root_id"] == root["id"]
+        assert note.triggered_by == late
+        assert note.message_stripped == "Second"
+
+    @pytest.mark.django_db
+    def test_a_new_thread_alone_notifies_nobody(self, workspace, project, page):
+        _, client = _named_member(workspace, project, "alice")
+        client.post(_url(workspace.slug, project.id, page.id), _block("Hello"), format="json")
+
+        assert Notification.objects.filter(entity_name="page_comment").count() == 0
+
+    @pytest.mark.django_db
+    def test_mention_notifies_the_named_member_under_the_mentions_sender(self, workspace, project, page):
+        alice, alice_client = _named_member(workspace, project, "alice")
+        bob, _ = _named_member(workspace, project, "bob")
+
+        alice_client.post(_url(workspace.slug, project.id, page.id), _block("Please check @bob."), format="json")
+        alice_client.post(_url(workspace.slug, project.id, page.id), _block("mail me at me@bob.com"), format="json")
+
+        notes = _notes(bob)
+        assert len(notes) == 1
+        assert notes[0].data["kind"] == "mention"
+        assert "mentioned" in notes[0].sender
+        assert _notes(alice) == []
+
+    @pytest.mark.django_db
+    def test_self_mention_and_mention_of_a_reply_participant_are_not_doubled(self, workspace, project, page):
+        alice, alice_client = _named_member(workspace, project, "alice")
+        bob, bob_client = _named_member(workspace, project, "bob")
+        url = _url(workspace.slug, project.id, page.id)
+        root = alice_client.post(url, _block("Root"), format="json").json()
+
+        bob_client.post(url, {"body": "hi @alice and @bob", "parent": root["id"]}, format="json")
+
+        assert [n.data["kind"] for n in _notes(alice)] == ["mention"]
+        assert _notes(bob) == []
+
+    @pytest.mark.django_db
+    def test_private_page_only_notifies_its_owner(self, session_client, workspace, project, create_user):
+        create_user.display_name = "owner"
+        create_user.save(update_fields=["display_name"])
+        private = _make_page(workspace, project, create_user, "Mine", access=Page.PRIVATE_ACCESS)
+        other, _ = _named_member(workspace, project, "other")
+
+        session_client.post(_url(workspace.slug, project.id, private.id), _block("psst @other"), format="json")
+
+        assert _notes(other) == []
+
+    @pytest.mark.django_db
+    def test_guest_is_not_notified_about_a_page_they_cannot_open(self, workspace, project, page):
+        project.guest_view_all_features = False
+        project.save(update_fields=["guest_view_all_features"])
+        guest, _ = _named_member(workspace, project, "guesty", role=5)
+        _, member_client = _named_member(workspace, project, "mem")
+
+        member_client.post(_url(workspace.slug, project.id, page.id), _block("hey @guesty"), format="json")
+
+        assert _notes(guest) == []
+
+    @pytest.mark.django_db
+    def test_inbox_lists_page_comment_notifications(self, workspace, project, page):
+        alice, alice_client = _named_member(workspace, project, "alice")
+        bob, bob_client = _named_member(workspace, project, "bob")
+        url = _url(workspace.slug, project.id, page.id)
+        root = alice_client.post(url, _block("Root"), format="json").json()
+        bob_client.post(url, {"body": "reply @alice", "parent": root["id"]}, format="json")
+        bob_client.post(url, {"body": "plain", "parent": root["id"]}, format="json")
+
+        inbox = alice_client.get(f"/api/workspaces/{workspace.slug}/users/notifications/")
+        mentions = alice_client.get(f"/api/workspaces/{workspace.slug}/users/notifications/?mentioned=true")
+
+        assert inbox.status_code == status.HTTP_200_OK
+        assert [n["data"]["kind"] for n in inbox.json()] == ["reply"]
+        assert [n["data"]["kind"] for n in mentions.json()] == ["mention"]

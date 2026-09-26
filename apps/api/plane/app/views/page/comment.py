@@ -14,8 +14,10 @@ from rest_framework.response import Response
 from plane.app.permissions import ROLE
 from plane.app.serializers import PageCommentSerializer
 from plane.db.models import Page, PageComment, Project, ProjectMember
+from plane.utils.exception_logger import log_exception
 
 from ..base import BaseAPIView
+from .comment_notifications import notify_page_comment
 
 
 class PageCommentEndpoint(BaseAPIView):
@@ -100,6 +102,10 @@ class PageCommentEndpoint(BaseAPIView):
                 anchor_board_id=anchor_board_id,
                 quote=data.get("quote", ""),
             )
+        try:
+            notify_page_comment(page, project_id, comment, request.user)
+        except Exception:
+            log_exception()
         return Response(PageCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
 
     def _reanchor(self, request, comment, role):
