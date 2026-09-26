@@ -16,6 +16,10 @@
       "mark_snooze": "Snooze",
       "mark_unsnooze": "Un snooze"
     },
+    "page_comment": {
+      "mentioned": "{name} mentioned you in",
+      "replied": "{name} replied in"
+    },
     "toasts": {
       "read": "Notification marked as read",
       "unread": "Notification marked as unread",

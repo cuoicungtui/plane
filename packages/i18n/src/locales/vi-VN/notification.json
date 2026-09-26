@@ -16,6 +16,10 @@
       "mark_snooze": "Tạm hoãn",
       "mark_unsnooze": "Hủy tạm hoãn"
     },
+    "page_comment": {
+      "mentioned": "{name} đã nhắc đến bạn trong",
+      "replied": "{name} đã trả lời trong"
+    },
     "toasts": {
       "read": "Thông báo đã được đánh dấu là đã đọc",
       "unread": "Thông báo đã được đánh dấu là chưa đọc",
