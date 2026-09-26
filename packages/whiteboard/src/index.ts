@@ -95,6 +95,7 @@ export type {
 export {
   getSingleSelectedWhiteboardElementId,
   getWhiteboardElementClientPoint,
+  getWhiteboardElementIdAtClientPoint,
   hasWhiteboardElement,
   selectWhiteboardElement,
 } from "./comments";

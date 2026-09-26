@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { MessageSquare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { PAGE_COMMENT_REQUEST_EVENT } from "@plane/editor";
@@ -19,6 +20,8 @@ import {
   createEmptyScene,
   fitWhiteboard,
   getSingleSelectedWhiteboardElementId,
+  getWhiteboardElementClientPoint,
+  getWhiteboardElementIdAtClientPoint,
   getWhiteboardZoom,
   hasWhiteboardElement,
   insertWhiteboardImages,
@@ -140,14 +143,42 @@ export default function PageWhiteboardBoard({
     });
   }, [boardId, readyBoard]);
 
-  const commentOnSelection = () => {
-    const board = boardRef.current;
-    const elementId = board && getSingleSelectedWhiteboardElementId(board);
-    if (!elementId) return;
+  const requestComment = (elementId: string) =>
     window.dispatchEvent(
       new CustomEvent<TPageCommentAnchorEventDetail>(PAGE_COMMENT_REQUEST_EVENT, {
         detail: { anchorType: "board_element", anchorId: elementId, anchorBoardId: boardId },
       })
+    );
+
+  const commentOnSelection = () => {
+    const board = boardRef.current;
+    const elementId = board && getSingleSelectedWhiteboardElementId(board);
+    if (elementId) requestComment(elementId);
+  };
+
+  // A read-only board never selects on click, so the element under the pointer offers the comment button instead.
+  const [hovered, setHovered] = useState<{ elementId: string; x: number; y: number } | null>(null);
+  const hoverHideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const canHoverComment = readOnly && commentsEnabled;
+  const hoverContainerRef = useRef<HTMLDivElement>(null);
+  const cancelHoverHide = () => clearTimeout(hoverHideTimer.current);
+  const scheduleHoverHide = () => {
+    cancelHoverHide();
+    hoverHideTimer.current = setTimeout(() => setHovered(null), 250);
+  };
+  useEffect(() => () => clearTimeout(hoverHideTimer.current), []);
+  const onHoverMove = (event: React.PointerEvent) => {
+    const board = boardRef.current;
+    const origin = hoverContainerRef.current?.getBoundingClientRect();
+    if (!canHoverComment || !board || !origin) return;
+    const elementId = getWhiteboardElementIdAtClientPoint(board, event.clientX, event.clientY);
+    if (!elementId) return scheduleHoverHide();
+    const point = getWhiteboardElementClientPoint(board, elementId);
+    if (!point) return scheduleHoverHide();
+    cancelHoverHide();
+    const next = { elementId, x: point.x - origin.left - 30, y: point.y - origin.top - 12 };
+    setHovered((current) =>
+      current && current.elementId === next.elementId && current.x === next.x && current.y === next.y ? current : next
     );
   };
 
@@ -262,7 +293,30 @@ export default function PageWhiteboardBoard({
           onPickImages={pickImages}
         />
       )}
-      <div className="relative min-h-0 flex-1">
+      <div
+        ref={hoverContainerRef}
+        className="relative min-h-0 flex-1"
+        onPointerMove={canHoverComment ? onHoverMove : undefined}
+        onPointerLeave={canHoverComment ? scheduleHoverHide : undefined}
+      >
+        {canHoverComment && hovered && (
+          <button
+            type="button"
+            title={t("page_whiteboard.props.comment")}
+            aria-label={t("page_whiteboard.props.comment")}
+            onClick={() => {
+              requestComment(hovered.elementId);
+              setHovered(null);
+            }}
+            onPointerEnter={cancelHoverHide}
+            onPointerLeave={scheduleHoverHide}
+            onPointerDown={(event) => event.stopPropagation()}
+            style={{ left: hovered.x, top: hovered.y }}
+            className="shadow absolute z-[6] flex size-6 items-center justify-center rounded-md border border-subtle bg-surface-1 text-secondary hover:bg-layer-transparent-hover"
+          >
+            <MessageSquare className="size-3.5" />
+          </button>
+        )}
         {!readOnly && readyBoard && (
           <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
             <WhiteboardPropertyBar

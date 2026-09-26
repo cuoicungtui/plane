@@ -59,7 +59,8 @@ const pluginKey = new PluginKey("pageComments");
 const COMMENT_BUTTON_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
-// A locked page has no drag handle, yet its blocks can still be commented, so a small button follows the hovered block.
+// A locked page has no drag handle, yet it can still be commented: a small button follows the hovered block, and
+// selected text is commented against the block that holds it (a text comment proper needs a mark, i.e. edit access).
 const createReadOnlyCommentButton = (view: EditorView, storage: TPageCommentsStorage) => {
   const button = document.createElement("button");
   button.type = "button";
@@ -71,19 +72,23 @@ const createReadOnlyCommentButton = (view: EditorView, storage: TPageCommentsSto
 
   let blockId: string | null = null;
   let quote = "";
+  let selecting = false;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   const hide = () => {
+    selecting = false;
     button.style.display = "none";
     blockId = null;
   };
   const scheduleHide = () => {
+    if (selecting) return;
     clearTimeout(hideTimer);
     hideTimer = setTimeout(hide, 250);
   };
 
   const onMove = (event: MouseEvent) => {
     if (view.editable || !storage.enabled) return hide();
+    if (selecting) return;
     const found = view.posAtCoords({ left: event.clientX, top: event.clientY });
     if (!found) return scheduleHide();
     const $pos = view.state.doc.resolve(found.pos);
@@ -100,6 +105,40 @@ const createReadOnlyCommentButton = (view: EditorView, storage: TPageCommentsSto
     button.style.top = `${rect.top + 2}px`;
     button.style.left = `${rect.right - 28}px`;
   };
+  const showForSelection = () => {
+    if (view.editable || !storage.enabled) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    let id: string | undefined;
+    try {
+      const $pos = view.state.doc.resolve(view.posAtDOM(range.startContainer, range.startOffset));
+      if ($pos.depth >= 1) id = $pos.node(1).attrs?.id as string | undefined;
+    } catch {
+      return;
+    }
+    if (!id) return;
+    const rects = range.getClientRects();
+    const last = rects[rects.length - 1] ?? range.getBoundingClientRect();
+    clearTimeout(hideTimer);
+    selecting = true;
+    blockId = id;
+    quote = text.slice(0, 200);
+    button.style.display = "flex";
+    button.style.top = `${last.bottom + 4}px`;
+    button.style.left = `${Math.min(last.right, window.innerWidth - 32)}px`;
+  };
+  const onMouseUp = () => setTimeout(showForSelection, 0);
+  const onSelectionChange = () => {
+    if (!selecting) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    selecting = false;
+    hide();
+  };
   const onClick = () => {
     if (!blockId) return;
     window.dispatchEvent(
@@ -107,10 +146,15 @@ const createReadOnlyCommentButton = (view: EditorView, storage: TPageCommentsSto
         detail: { anchorType: "block", anchorId: blockId, quote },
       })
     );
+    selecting = false;
+    window.getSelection()?.removeAllRanges();
     hide();
   };
 
   view.dom.addEventListener("mousemove", onMove);
+  view.dom.addEventListener("mouseup", onMouseUp);
+  document.addEventListener("selectionchange", onSelectionChange);
+  button.addEventListener("mousedown", (event) => event.preventDefault());
   view.dom.addEventListener("mouseleave", scheduleHide);
   button.addEventListener("mouseenter", () => clearTimeout(hideTimer));
   button.addEventListener("mouseleave", scheduleHide);
@@ -120,6 +164,8 @@ const createReadOnlyCommentButton = (view: EditorView, storage: TPageCommentsSto
     destroy() {
       clearTimeout(hideTimer);
       view.dom.removeEventListener("mousemove", onMove);
+      view.dom.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("selectionchange", onSelectionChange);
       view.dom.removeEventListener("mouseleave", scheduleHide);
       button.remove();
     },

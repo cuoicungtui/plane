@@ -2,10 +2,13 @@ import {
   addSelectedElement,
   clearSelectedElement,
   getElementById,
+  getHitElementByPoint,
   getRectangleByElements,
   getSelectedElements,
+  toHostPoint,
   toHostPointFromViewBoxPoint,
   toScreenPointFromHostPoint,
+  toViewBoxPoint,
 } from "@plait/core";
 import type { PlaitBoard } from "@plait/core";
 
@@ -40,4 +43,17 @@ export const getWhiteboardElementClientPoint = (
   const rect = getRectangleByElements(board, [element], false);
   const [x, y] = toScreenPointFromHostPoint(board, toHostPointFromViewBoxPoint(board, [rect.x + rect.width, rect.y]));
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+};
+
+/**
+ * The ID of the element drawn under a client (window) point, or null. A read-only board never selects on
+ * click, so hover is how a viewer finds the element to comment on.
+ */
+export const getWhiteboardElementIdAtClientPoint = (
+  board: PlaitBoard,
+  clientX: number,
+  clientY: number
+): string | null => {
+  const element = getHitElementByPoint(board, toViewBoxPoint(board, toHostPoint(board, clientX, clientY)));
+  return element && typeof element.id === "string" ? element.id : null;
 };
