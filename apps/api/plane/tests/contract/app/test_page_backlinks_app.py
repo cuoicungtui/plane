@@ -8,6 +8,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -231,3 +232,24 @@ class TestPageMentionLogging:
         page_transaction("<p></p>", html, str(source.id))
         listed = session_client.get(_backlinks_url(workspace.slug, project.id, target.id))
         assert listed.json() == []
+
+
+@pytest.mark.contract
+class TestBacklinkBackfill:
+    @pytest.mark.django_db
+    def test_pages_saved_before_link_tracking_get_their_backlinks(
+        self, session_client, workspace, project, create_user
+    ):
+        target = _make_page(workspace, project, create_user, "Target")
+        html = (
+            f'<p>See <mention-component id="{uuid.uuid4()}" entity_identifier="{target.id}" '
+            f'entity_name="page"></mention-component></p>'
+        )
+        _make_page(workspace, project, create_user, "Old source", description_html=html)
+        assert session_client.get(_backlinks_url(workspace.slug, project.id, target.id)).json() == []
+
+        call_command("backfill_page_logs")
+        call_command("backfill_page_logs")
+
+        listed = session_client.get(_backlinks_url(workspace.slug, project.id, target.id))
+        assert _names(listed) == ["Old source"]

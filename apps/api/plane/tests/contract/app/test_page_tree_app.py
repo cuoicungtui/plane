@@ -665,6 +665,29 @@ class TestPageTreeDelete:
 
 
 @pytest.mark.contract
+class TestPageArchive:
+    @pytest.mark.django_db
+    def test_locked_page_cannot_be_archived(self, session_client, workspace, project, create_user):
+        page = _make_page(workspace, project, create_user, "Locked", is_locked=True)
+
+        response = session_client.post(f"{_pages_url(workspace.slug, project.id, page.id)}archive/")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        page.refresh_from_db()
+        assert page.archived_at is None
+
+    @pytest.mark.django_db
+    def test_unlocked_page_can_be_archived(self, session_client, workspace, project, create_user):
+        page = _make_page(workspace, project, create_user, "Open")
+
+        response = session_client.post(f"{_pages_url(workspace.slug, project.id, page.id)}archive/")
+
+        assert response.status_code == status.HTTP_200_OK
+        page.refresh_from_db()
+        assert page.archived_at is not None
+
+
+@pytest.mark.contract
 class TestPageTreeDuplicate:
     @pytest.mark.django_db
     def test_duplicate_lands_right_after_source_same_parent(self, session_client, workspace, project, create_user):
@@ -729,6 +752,31 @@ class TestPageTreeDuplicate:
         copy = Page.objects.exclude(pk=source.id).get(name="Source (Copy)")
         assert copy.parent_id is None
         assert copy.sort_order == 2 * STEP
+
+
+    @pytest.mark.django_db
+    def test_duplicate_copies_visible_sub_pages_in_order(self, session_client, workspace, project, create_user):
+        source = _make_page(workspace, project, create_user, "Source")
+        child_b = _make_page(workspace, project, create_user, "B", parent=source, sort_order=2 * STEP)
+        _make_page(workspace, project, create_user, "A", parent=source, sort_order=STEP)
+        _make_page(workspace, project, create_user, "B1", parent=child_b, sort_order=STEP)
+        _make_page(
+            workspace, project, create_user, "Archived", parent=source, sort_order=3 * STEP, archived_at=timezone.now()
+        )
+        stranger = User.objects.create(email="stranger@plane.so", username="stranger")
+        _make_page(workspace, project, stranger, "Someone else's private", parent=source, access=Page.PRIVATE_ACCESS)
+
+        response = session_client.post(
+            f"{_pages_url(workspace.slug, project.id, source.id)}duplicate/", format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        copy = Page.objects.get(pk=response.json()["id"])
+        assert _tree_order(project, copy) == ["A", "B"]
+        copied_b = Page.objects.get(parent=copy, name="B")
+        assert _tree_order(project, copied_b) == ["B1"]
+        assert copied_b.id != child_b.id
+        assert set(_tree_order(project, source)) == {"A", "B", "Archived", "Someone else's private"}
 
 
 @pytest.mark.contract

@@ -55,6 +55,7 @@ from plane.db.models import (
     UserRecentVisit,
 )
 from plane.utils.error_codes import ERROR_CODES
+from plane.utils.exception_logger import log_exception
 
 # Local imports
 from ..base import BaseAPIView, BaseViewSet
@@ -645,6 +646,12 @@ class PageViewSet(BaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if page.is_locked:
+            return Response(
+                {"error": "Unlock the page before archiving it"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         UserFavorite.objects.filter(
             entity_type="page",
             entity_identifier=page_id,
@@ -950,7 +957,12 @@ class PageDuplicateEndpoint(BaseAPIView):
             return [PageDuplicateEndpoint._remap_value(item, identifiers) for item in value]
         return identifiers.get(str(value), value)
 
-    def post(self, request, slug, project_id, page_id):
+    def _duplicate(self, request, slug, project_id, page_id, parent_page=None):
+        """Copy one page with its images and whiteboards; ``None`` when the user may not see it.
+
+        Without ``parent_page`` the copy is named "(Copy)" and lands right after the source. With it, the copy is a
+        sub-page of that (already copied) page, keeps the source's name and its place among its siblings.
+        """
         # Snapshot only referenced boards. The row locks make this a consistent
         # scene snapshot without holding a lock while objects are copied to S3.
         with transaction.atomic():
@@ -958,7 +970,7 @@ class PageDuplicateEndpoint(BaseAPIView):
                 pk=page_id, workspace__slug=slug, projects__id=project_id, project_pages__deleted_at__isnull=True
             )
             if source.access == Page.PRIVATE_ACCESS and source.owned_by_id != request.user.id:
-                return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+                return None
             source_html = source.description_html
             source_json = deepcopy(source.description_json)
             project_ids = list(ProjectPage.objects.filter(page_id=source.id).values_list("project_id", flat=True))
@@ -978,7 +990,10 @@ class PageDuplicateEndpoint(BaseAPIView):
         try:
             with transaction.atomic():
                 lock_page_tree(project_id)
-                parent_id, sort_order, renumbered = slot_after_page(project_id, source.id)
+                if parent_page is None:
+                    parent_id, sort_order, renumbered = slot_after_page(project_id, source.id)
+                else:
+                    parent_id, sort_order, renumbered = parent_page.id, source.sort_order, {}
                 if renumbered:
                     Page.objects.filter(pk__in=renumbered.keys()).update(
                         sort_order=Case(
@@ -989,7 +1004,7 @@ class PageDuplicateEndpoint(BaseAPIView):
                 page = Page.objects.create(
                     id=uuid.uuid4(),
                     workspace=source.workspace,
-                    name=f"{source.name} (Copy)",
+                    name=f"{source.name} (Copy)" if parent_page is None else source.name,
                     description_html=source_html,
                     description_json=source_json,
                     description_binary=None,
@@ -1043,6 +1058,40 @@ class PageDuplicateEndpoint(BaseAPIView):
             raise
 
         page_transaction.delay(new_description_html=page.description_html, old_description_html=None, page_id=page.id)
+        return page
+
+    def _duplicate_descendants(self, request, slug, project_id, source_id, copy, seen):
+        """Copy the visible, unarchived sub-pages of ``source_id`` under ``copy``, depth first, keeping their order."""
+        children = (
+            Page.objects.filter(
+                parent_id=source_id,
+                archived_at__isnull=True,
+                project_pages__project_id=project_id,
+                project_pages__deleted_at__isnull=True,
+            )
+            .filter(Q(access=Page.PUBLIC_ACCESS) | Q(owned_by=request.user))
+            .order_by("sort_order", "created_at", "id")
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        for child_id in list(children):
+            if child_id in seen:
+                continue
+            seen.add(child_id)
+            try:
+                child_copy = self._duplicate(request, slug, project_id, child_id, parent_page=copy)
+            except Exception:
+                # A sub-page that cannot be copied is skipped, with its own sub-pages, rather than failing the copy
+                log_exception()
+                continue
+            if child_copy is not None:
+                self._duplicate_descendants(request, slug, project_id, child_id, child_copy, seen)
+
+    def post(self, request, slug, project_id, page_id):
+        page = self._duplicate(request, slug, project_id, page_id)
+        if page is None:
+            return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+        self._duplicate_descendants(request, slug, project_id, page_id, page, {page_id})
         page = (
             Page.objects.filter(pk=page.id)
             .annotate(
