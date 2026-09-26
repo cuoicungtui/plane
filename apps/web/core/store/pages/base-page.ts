@@ -487,10 +487,10 @@ export class BasePage extends ExtendedBasePage implements TBasePage {
       }
       this.services.onHierarchyChange?.();
     } catch (error) {
-      console.error(error);
       runInAction(() => {
         this.archived_at = null;
       });
+      throw error;
     }
   };
 

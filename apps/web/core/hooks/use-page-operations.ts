@@ -108,7 +108,8 @@ export const usePageOperations = (
       toggleArchive: async () => {
         if (archived_at) {
           try {
-            await executeCollaborativeAction({ type: "sendMessageToServer", message: "unarchive" });
+            const restored = await executeCollaborativeAction({ type: "sendMessageToServer", message: "unarchive" });
+            if (!restored) return;
             setToast({
               type: TOAST_TYPE.SUCCESS,
               title: "Success!",
@@ -123,7 +124,8 @@ export const usePageOperations = (
           }
         } else {
           try {
-            await executeCollaborativeAction({ type: "sendMessageToServer", message: "archive" });
+            const archived = await executeCollaborativeAction({ type: "sendMessageToServer", message: "archive" });
+            if (!archived) return;
             setToast({
               type: TOAST_TYPE.SUCCESS,
               title: "Success!",

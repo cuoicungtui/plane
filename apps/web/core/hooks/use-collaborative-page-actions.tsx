@@ -76,14 +76,17 @@ export const useCollaborativePageActions = (props: Props) => {
             editorRef?.emitRealTimeUpdate(serverEventName);
           }
         }
-      } catch {
+        return true;
+      } catch (error) {
+        const serverMessage = (error as { error?: string } | undefined)?.error;
         if (actionDetails?.errorMessage) {
           setToast({
             type: TOAST_TYPE.ERROR,
             title: "Error!",
-            message: actionDetails.errorMessage,
+            message: serverMessage ?? actionDetails.errorMessage,
           });
         }
+        return false;
       }
     },
     [actionHandlerMap, editorRef]
