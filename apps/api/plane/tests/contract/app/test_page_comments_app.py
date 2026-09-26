@@ -231,6 +231,64 @@ class TestEditDeleteResolve:
         assert mine.json()["edited_at"] is not None
 
     @pytest.mark.django_db
+    def test_author_or_admin_can_reattach_a_thread_to_another_anchor(self, session_client, workspace, project, page):
+        member, member_client = _member(workspace, project, "member", role=15)
+        _, other_client = _member(workspace, project, "other", role=15)
+        comment = member_client.post(_url(workspace.slug, project.id, page.id), _block(), format="json").json()
+        detail = _url(workspace.slug, project.id, page.id, comment["id"])
+        target = {"anchor_type": "text", "anchor_id": "mark-9", "quote": "moved words"}
+
+        denied = other_client.patch(detail, target, format="json")
+        by_author = member_client.patch(detail, target, format="json")
+        by_admin = session_client.patch(
+            detail,
+            {"anchor_type": "board_element", "anchor_id": "el-1", "anchor_board_id": "board-1"},
+            format="json",
+        )
+
+        assert denied.status_code == status.HTTP_403_FORBIDDEN
+        assert by_author.status_code == status.HTTP_200_OK
+        assert by_author.json()["anchor_type"] == "text"
+        assert by_author.json()["anchor_id"] == "mark-9"
+        assert by_author.json()["quote"] == "moved words"
+        assert by_author.json()["body"] == "Looks good"
+        assert by_author.json()["edited_at"] is None
+        assert by_admin.status_code == status.HTTP_200_OK
+        assert by_admin.json()["anchor_board_id"] == "board-1"
+        assert by_admin.json()["quote"] == ""
+
+    @pytest.mark.django_db
+    def test_reattach_needs_a_valid_anchor_and_a_root_thread(self, session_client, workspace, project, page):
+        url = _url(workspace.slug, project.id, page.id)
+        root = session_client.post(url, _block(), format="json").json()
+        reply = session_client.post(url, {"body": "Reply", "parent": root["id"]}, format="json").json()
+
+        missing_board = session_client.patch(
+            _url(workspace.slug, project.id, page.id, root["id"]),
+            {"anchor_type": "board_element", "anchor_id": "el-1"},
+            format="json",
+        )
+        stray_board = session_client.patch(
+            _url(workspace.slug, project.id, page.id, root["id"]),
+            {"anchor_type": "block", "anchor_id": "b2", "anchor_board_id": "board-1"},
+            format="json",
+        )
+        no_id = session_client.patch(
+            _url(workspace.slug, project.id, page.id, root["id"]), {"anchor_type": "block"}, format="json"
+        )
+        on_reply = session_client.patch(
+            _url(workspace.slug, project.id, page.id, reply["id"]),
+            {"anchor_type": "block", "anchor_id": "b2"},
+            format="json",
+        )
+
+        assert missing_board.status_code == status.HTTP_400_BAD_REQUEST
+        assert stray_board.status_code == status.HTTP_400_BAD_REQUEST
+        assert no_id.status_code == status.HTTP_400_BAD_REQUEST
+        assert on_reply.status_code == status.HTTP_400_BAD_REQUEST
+        assert PageComment.objects.get(pk=root["id"]).anchor_id == "block-1"
+
+    @pytest.mark.django_db
     def test_editing_needs_a_body(self, session_client, workspace, project, page):
         comment = session_client.post(_url(workspace.slug, project.id, page.id), _block(), format="json").json()
 

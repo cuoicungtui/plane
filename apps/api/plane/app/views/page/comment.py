@@ -102,13 +102,48 @@ class PageCommentEndpoint(BaseAPIView):
             )
         return Response(PageCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
 
+    def _reanchor(self, request, comment, role):
+        """Move a thread to another block, piece of text or whiteboard element, e.g. after its anchor was deleted."""
+        if comment.parent_id:
+            return Response({"error": "Only a thread can be re-attached."}, status=status.HTTP_400_BAD_REQUEST)
+        if comment.actor_id != request.user.id and role != ROLE.ADMIN.value:
+            return Response(
+                {"error": "Only the author or a project admin can re-attach a thread."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = PageCommentSerializer(
+            data={
+                "body": comment.body,
+                "anchor_type": request.data.get("anchor_type"),
+                "anchor_id": request.data.get("anchor_id"),
+                "anchor_board_id": request.data.get("anchor_board_id", ""),
+                "quote": request.data.get("quote", ""),
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        anchor_board_id = data.get("anchor_board_id", "")
+        if (data["anchor_type"] == PageComment.BOARD_ELEMENT) != bool(anchor_board_id):
+            return Response(
+                {"error": "anchor_board_id is required for, and only for, whiteboard elements."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        comment.anchor_type = data["anchor_type"]
+        comment.anchor_id = data["anchor_id"]
+        comment.anchor_board_id = anchor_board_id
+        comment.quote = data.get("quote", "")
+        comment.save(update_fields=["anchor_type", "anchor_id", "anchor_board_id", "quote", "updated_at"])
+        return Response(PageCommentSerializer(comment).data, status=status.HTTP_200_OK)
+
     def patch(self, request, slug, project_id, page_id, pk):
-        page, _ = self._context(request, slug, project_id, page_id)
+        page, role = self._context(request, slug, project_id, page_id)
         if page is None:
             return self._not_found()
         comment = PageComment.objects.filter(pk=pk, page=page).first()
         if comment is None:
             return self._not_found()
+        if "anchor_type" in request.data or "anchor_id" in request.data:
+            return self._reanchor(request, comment, role)
         if comment.actor_id != request.user.id:
             return Response({"error": "Only the author can edit a comment."}, status=status.HTTP_403_FORBIDDEN)
         serializer = PageCommentSerializer(data={"body": request.data.get("body")})
