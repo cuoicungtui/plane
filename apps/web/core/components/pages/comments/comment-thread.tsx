@@ -70,6 +70,7 @@ export const PageCommentThread = observer(
           comment={root}
           canEdit={root.actor === currentUserId}
           canDelete={root.actor === currentUserId || isAdmin}
+          deletesReplies={replies.length > 0}
           onEdit={(body) => onEdit(root.id, body)}
           onDelete={() => onDelete(root.id)}
         />

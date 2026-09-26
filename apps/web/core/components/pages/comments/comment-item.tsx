@@ -20,15 +20,18 @@ type Props = {
   comment: TPageComment;
   canDelete: boolean;
   canEdit: boolean;
+  /** Deleting the first comment of a thread takes its replies with it. */
+  deletesReplies?: boolean;
   onDelete: () => Promise<void>;
   onEdit: (body: string) => Promise<void>;
 };
 
 export const PageCommentItem = observer(function PageCommentItem(props: Props) {
-  const { comment, canDelete, canEdit, onDelete, onEdit } = props;
+  const { comment, canDelete, canEdit, deletesReplies, onDelete, onEdit } = props;
   const { t } = useTranslation();
   const { getUserDetails } = useMember();
   const [isEditing, setIsEditing] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const author = getUserDetails(comment.actor);
 
   return (
@@ -61,11 +64,39 @@ export const PageCommentItem = observer(function PageCommentItem(props: Props) {
                     {t("page_comments.edit")}
                   </button>
                 )}
-                {canDelete && (
-                  <button type="button" className="hover:text-danger-primary" onClick={() => void onDelete()}>
+                {canDelete && !isConfirmingDelete && (
+                  <button
+                    type="button"
+                    className="hover:text-danger-primary"
+                    onClick={() => setIsConfirmingDelete(true)}
+                  >
                     {t("page_comments.delete")}
                   </button>
                 )}
+              </div>
+            )}
+            {canDelete && isConfirmingDelete && (
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-11">
+                <span className="text-secondary">
+                  {t(deletesReplies ? "page_comments.delete_confirm_thread" : "page_comments.delete_confirm")}
+                </span>
+                <button
+                  type="button"
+                  className="font-medium text-danger-primary"
+                  onClick={() => {
+                    setIsConfirmingDelete(false);
+                    void onDelete();
+                  }}
+                >
+                  {t("page_comments.delete_yes")}
+                </button>
+                <button
+                  type="button"
+                  className="text-tertiary hover:text-primary"
+                  onClick={() => setIsConfirmingDelete(false)}
+                >
+                  {t("page_comments.cancel")}
+                </button>
               </div>
             )}
           </>
