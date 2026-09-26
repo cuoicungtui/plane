@@ -355,6 +355,13 @@
     "resolve": "Đánh dấu đã xử lý",
     "reopen": "Mở lại",
     "orphan": "Mất vị trí neo — nội dung mà bình luận này gắn vào đã bị xóa",
+    "reattach": "Gắn lại vào chỗ khác",
+    "reattach_cancel": "Hủy gắn lại",
+    "reattach_hint": "Bây giờ hãy bấm nút bình luận ở một khối, đoạn chữ đang chọn hoặc phần tử bảng trắng để chuyển bình luận này sang đó.",
+    "resolve_orphans": "Đóng tất cả bình luận mất vị trí neo ({count})",
+    "search_placeholder": "Tìm trong bình luận",
+    "all_people": "Mọi người",
+    "no_match": "Không có bình luận phù hợp",
     "error_title": "Không gửi được bình luận",
     "error_message": "Có lỗi xảy ra, vui lòng thử lại.",
     "filter": {

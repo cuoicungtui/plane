@@ -7,7 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 import type { TPageComment } from "@plane/types";
-import { countOpenBoardElementThreads, countOpenThreadsByAnchor, groupCommentThreads } from "./thread-utils";
+import {
+  countOpenBoardElementThreads,
+  countOpenThreadsByAnchor,
+  filterCommentThreads,
+  getThreadActorIds,
+  groupCommentThreads,
+} from "./thread-utils";
 
 const comment = (overrides: Partial<TPageComment>): TPageComment =>
   ({
@@ -81,5 +87,44 @@ describe("countOpenBoardElementThreads", () => {
     ]);
     expect(countOpenBoardElementThreads(threads)).toEqual({ boardA: { e1: 2 }, boardB: { e2: 1 } });
     expect(countOpenBoardElementThreads([])).toEqual({});
+  });
+});
+
+describe("filterCommentThreads", () => {
+  const threads = groupCommentThreads([
+    comment({ id: "r1", actor: "ann", body: "Fix the Budget", quote: "Q3 numbers" }),
+    comment({ id: "a", parent: "r1", actor: "bob", body: "done" }),
+    comment({ id: "r2", actor: "bob", body: "Looks fine" }),
+  ]);
+
+  it("returns everything without a filter", () => {
+    expect(filterCommentThreads(threads, { query: "  " })).toHaveLength(2);
+  });
+
+  it("matches a person who wrote the root or any reply", () => {
+    expect(filterCommentThreads(threads, { actorId: "ann" }).map((t) => t.root.id)).toEqual(["r1"]);
+    expect(filterCommentThreads(threads, { actorId: "bob" }).map((t) => t.root.id)).toEqual(["r1", "r2"]);
+  });
+
+  it("searches bodies, replies and the quote without regard to case", () => {
+    expect(filterCommentThreads(threads, { query: "budget" }).map((t) => t.root.id)).toEqual(["r1"]);
+    expect(filterCommentThreads(threads, { query: "DONE" }).map((t) => t.root.id)).toEqual(["r1"]);
+    expect(filterCommentThreads(threads, { query: "q3" }).map((t) => t.root.id)).toEqual(["r1"]);
+  });
+
+  it("combines person and text", () => {
+    expect(filterCommentThreads(threads, { actorId: "bob", query: "fine" }).map((t) => t.root.id)).toEqual(["r2"]);
+    expect(filterCommentThreads(threads, { actorId: "ann", query: "fine" })).toEqual([]);
+  });
+});
+
+describe("getThreadActorIds", () => {
+  it("lists each writer once", () => {
+    const threads = groupCommentThreads([
+      comment({ id: "r1", actor: "ann" }),
+      comment({ id: "a", parent: "r1", actor: "bob" }),
+      comment({ id: "b", parent: "r1", actor: "ann" }),
+    ]);
+    expect(getThreadActorIds(threads)).toEqual(["ann", "bob"]);
   });
 });

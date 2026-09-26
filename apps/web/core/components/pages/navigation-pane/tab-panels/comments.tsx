@@ -20,8 +20,10 @@ import {
 } from "@/components/pages/comments/board-comments";
 import { CommentComposer } from "@/components/pages/comments/comment-composer";
 import { PageCommentThread } from "@/components/pages/comments/comment-thread";
+import { filterCommentThreads, getThreadActorIds } from "@/components/pages/comments/thread-utils";
 import { pageCommentService, usePageComments } from "@/components/pages/comments/use-page-comments";
 // hooks
+import { useMember } from "@/hooks/store/use-member";
 import { useUser, useUserPermissions } from "@/hooks/store/user";
 // store
 import type { TPageInstance } from "@/store/pages/base-page";
@@ -36,12 +38,16 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
   const { page } = props;
   const { t } = useTranslation();
   const { data: currentUser } = useUser();
+  const { getUserDetails } = useMember();
   const { allowPermissions } = useUserPermissions();
   const { workspaceSlug, projectId, pageId, threads, mutate, isLoading } = usePageComments(page);
   const {
     editor: { editorRef, commentDraft, setCommentDraft, focusedCommentAnchor },
   } = page;
   const [filter, setFilter] = useState<TFilter>("open");
+  const [query, setQuery] = useState("");
+  const [actorId, setActorId] = useState("");
+  const [reattachId, setReattachId] = useState<string | null>(null);
   const [, setTick] = useState(0);
   // whiteboards report element changes here, since they are not part of the editor document
   useCommentBoardsRevision();
@@ -70,8 +76,11 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
     };
   }, [editorRef]);
 
-  const openThreads = threads.filter(({ root }) => !root.resolved_at);
-  const resolvedThreads = threads.filter(({ root }) => !!root.resolved_at);
+  const matchingThreads = filterCommentThreads(threads, { actorId: actorId || undefined, query });
+  const openThreads = matchingThreads.filter(({ root }) => !root.resolved_at);
+  const resolvedThreads = matchingThreads.filter(({ root }) => !!root.resolved_at);
+  const actorIds = getThreadActorIds(threads);
+  const isFiltering = !!actorId || !!query.trim();
   const visibleThreads = filter === "open" ? openThreads : resolvedThreads;
 
   // clicking a marker in the document brings its thread into view
@@ -93,6 +102,31 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
     const timer = setTimeout(() => setHighlightedId(null), 2500);
     return () => clearTimeout(timer);
   }, [focusedCommentAnchor, threads]);
+
+  // while a thread is being re-attached, the next comment request from the page (block, text or board element)
+  // moves that thread there instead of opening a new draft
+  useEffect(() => {
+    if (!reattachId || !commentDraft || !workspaceSlug || !projectId || !pageId) return;
+    const anchor = commentDraft;
+    setCommentDraft(null);
+    setReattachId(null);
+    pageCommentService
+      .reattachComment(workspaceSlug, projectId, pageId, reattachId, {
+        anchor_type: anchor.anchorType,
+        anchor_id: anchor.anchorId,
+        anchor_board_id: anchor.anchorBoardId,
+        quote: anchor.quote,
+      })
+      .then(() => mutate())
+      .catch((error: { error?: string }) => {
+        if (anchor.anchorType === "text") editorRef?.removeCommentMark(anchor.anchorId);
+        setToast({
+          type: TOAST_TYPE.ERROR,
+          title: t("page_comments.error_title"),
+          message: error?.error ?? t("page_comments.error_message"),
+        });
+      });
+  }, [reattachId, commentDraft, workspaceSlug, projectId, pageId, setCommentDraft, mutate, editorRef, t]);
 
   // rerenders after the document changes (see setTick), so the flags always reflect the current blocks
   const orphanFlags = new Map(
@@ -125,6 +159,8 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
     }
   };
 
+  const orphanOpenThreads = openThreads.filter(({ root }) => orphanFlags.get(root.id));
+
   const draftAnchorLabel =
     commentDraft?.quote || (commentDraft ? t(`page_comments.anchor.${commentDraft.anchorType}`) : "");
 
@@ -144,8 +180,52 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
           </button>
         ))}
       </div>
+      <div className="mb-2 flex gap-1.5">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("page_comments.search_placeholder")}
+          className="min-w-0 flex-1 rounded-md border border-subtle bg-surface-1 px-2 py-1 text-12 outline-none focus:border-accent-strong"
+        />
+        <select
+          value={actorId}
+          onChange={(event) => setActorId(event.target.value)}
+          aria-label={t("page_comments.all_people")}
+          className="max-w-[40%] rounded-md border border-subtle bg-surface-1 px-1 py-1 text-12 outline-none focus:border-accent-strong"
+        >
+          <option value="">{t("page_comments.all_people")}</option>
+          {actorIds.map((id) => (
+            <option key={id} value={id}>
+              {getUserDetails(id)?.display_name ?? id}
+            </option>
+          ))}
+        </select>
+      </div>
+      {reattachId && (
+        <p className="mb-2 rounded-md bg-layer-transparent-hover px-2 py-1.5 text-11 text-secondary">
+          {t("page_comments.reattach_hint")}
+        </p>
+      )}
+      {canComment && filter === "open" && orphanOpenThreads.length > 0 && (
+        <button
+          type="button"
+          className="mb-2 self-start text-11 font-medium text-warning-primary hover:underline"
+          onClick={() =>
+            void run(() =>
+              Promise.all(
+                orphanOpenThreads.map(({ root }) =>
+                  pageCommentService.setCommentResolved(workspaceSlug, projectId, pageId, root.id, true)
+                )
+              )
+            ).catch(() => undefined)
+          }
+        >
+          {t("page_comments.resolve_orphans", { count: orphanOpenThreads.length })}
+        </button>
+      )}
       <div className="flex-1 space-y-2.5 overflow-y-auto pb-4">
-        {commentDraft && (
+        {commentDraft && !reattachId && (
           <div className="space-y-1.5 rounded-lg border border-accent-strong bg-surface-1 p-2.5">
             <p className="border-yellow-500 line-clamp-2 border-l-2 pl-2 text-11 break-words text-tertiary">
               {draftAnchorLabel}
@@ -176,10 +256,14 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
         )}
         {!isLoading && visibleThreads.length === 0 && !commentDraft && (
           <div className="grid place-items-center px-2 pt-10 text-center">
-            <div className="space-y-2.5">
-              <h4 className="text-14 font-medium">{t(`page_comments.empty.${filter}.title`)}</h4>
-              <p className="text-13 font-medium text-secondary">{t(`page_comments.empty.${filter}.description`)}</p>
-            </div>
+            {isFiltering ? (
+              <h4 className="text-14 font-medium">{t("page_comments.no_match")}</h4>
+            ) : (
+              <div className="space-y-2.5">
+                <h4 className="text-14 font-medium">{t(`page_comments.empty.${filter}.title`)}</h4>
+                <p className="text-13 font-medium text-secondary">{t(`page_comments.empty.${filter}.description`)}</p>
+              </div>
+            )}
           </div>
         )}
         {visibleThreads.map((thread) => (
@@ -195,6 +279,12 @@ export const PageNavigationPaneCommentsTabPanel = observer(function PageNavigati
             isFocused={highlightedId === thread.root.id}
             isOrphan={orphanFlags.get(thread.root.id) ?? false}
             canComment={canComment}
+            canReattach={canComment && (thread.root.actor === currentUser?.id || isAdmin)}
+            isReattaching={reattachId === thread.root.id}
+            onReattach={() => {
+              setCommentDraft(null);
+              setReattachId((current) => (current === thread.root.id ? null : thread.root.id));
+            }}
             onLocate={() => {
               const { anchor_type, anchor_id, anchor_board_id } = thread.root;
               if (anchor_type === "board_element") locateCommentBoardElement(anchor_board_id, anchor_id);

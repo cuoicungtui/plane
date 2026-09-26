@@ -227,6 +227,23 @@ export class ProjectPageService extends APIService {
       });
   }
 
+  async reattachComment(
+    workspaceSlug: string,
+    projectId: string,
+    pageId: string,
+    commentId: string,
+    anchor: Pick<TPageCommentCreatePayload, "anchor_type" | "anchor_id" | "anchor_board_id" | "quote">
+  ): Promise<TPageComment> {
+    return this.patch(
+      `/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/${commentId}/`,
+      anchor
+    )
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async deleteComment(workspaceSlug: string, projectId: string, pageId: string, commentId: string): Promise<void> {
     return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/pages/${pageId}/comments/${commentId}/`)
       .then(() => undefined)

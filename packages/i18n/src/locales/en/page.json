@@ -355,6 +355,13 @@
     "resolve": "Resolve",
     "reopen": "Reopen",
     "orphan": "Anchor lost — the content this comment pointed to was removed",
+    "reattach": "Re-attach to something else",
+    "reattach_cancel": "Cancel re-attaching",
+    "reattach_hint": "Now click the comment button on a block, some selected text or a whiteboard element to move this thread there.",
+    "resolve_orphans": "Resolve all with lost anchors ({count})",
+    "search_placeholder": "Search comments",
+    "all_people": "Everyone",
+    "no_match": "No comment matches",
     "error_title": "Comment failed",
     "error_message": "Something went wrong. Please try again.",
     "filter": {

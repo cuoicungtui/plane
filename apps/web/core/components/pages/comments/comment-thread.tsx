@@ -21,6 +21,9 @@ type Props = {
   isFocused: boolean;
   isOrphan: boolean;
   canComment: boolean;
+  canReattach: boolean;
+  isReattaching: boolean;
+  onReattach: () => void;
   onLocate: () => void;
   onReply: (parentId: string, body: string) => Promise<void>;
   onEdit: (commentId: string, body: string) => Promise<void>;
@@ -37,6 +40,9 @@ export const PageCommentThread = observer(
       isFocused,
       isOrphan,
       canComment,
+      canReattach,
+      isReattaching,
+      onReattach,
       onLocate,
       onReply,
       onEdit,
@@ -65,7 +71,23 @@ export const PageCommentThread = observer(
         >
           <span className="line-clamp-2 break-words">{anchorLabel}</span>
         </button>
-        {isOrphan && <p className="text-11 font-medium text-warning-primary">{t("page_comments.orphan")}</p>}
+        {isOrphan && (
+          <div className="space-y-1">
+            <p className="text-11 font-medium text-warning-primary">{t("page_comments.orphan")}</p>
+            {canReattach && (
+              <button
+                type="button"
+                className={cn(
+                  "text-11 font-medium hover:underline",
+                  isReattaching ? "text-tertiary" : "text-accent-primary"
+                )}
+                onClick={onReattach}
+              >
+                {isReattaching ? t("page_comments.reattach_cancel") : t("page_comments.reattach")}
+              </button>
+            )}
+          </div>
+        )}
         <PageCommentItem
           comment={root}
           canEdit={root.actor === currentUserId}

@@ -39,3 +39,27 @@ export const countOpenThreadsByAnchor = (
   });
   return counts;
 };
+
+export type TCommentThreadFilter = { actorId?: string; query?: string };
+
+/** Threads where any comment was written by `actorId` and any comment (or the quoted text) contains `query`. */
+export const filterCommentThreads = (threads: TCommentThread[], { actorId, query }: TCommentThreadFilter) => {
+  const needle = query?.trim().toLowerCase();
+  if (!actorId && !needle) return threads;
+  return threads.filter(({ root, replies }) => {
+    const comments = [root, ...replies];
+    if (actorId && !comments.some((comment) => comment.actor === actorId)) return false;
+    if (!needle) return true;
+    return (
+      root.quote.toLowerCase().includes(needle) ||
+      comments.some((comment) => comment.body.toLowerCase().includes(needle))
+    );
+  });
+};
+
+/** IDs of everyone who wrote in these threads, in order of first appearance. */
+export const getThreadActorIds = (threads: TCommentThread[]): string[] => {
+  const ids = new Set<string>();
+  threads.forEach(({ root, replies }) => [root, ...replies].forEach((comment) => ids.add(comment.actor)));
+  return [...ids];
+};
